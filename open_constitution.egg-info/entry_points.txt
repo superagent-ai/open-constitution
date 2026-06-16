@@ -1,4 +1,0 @@
-[console_scripts]
-guarded-generate = scripts.guarded_generate:main
-sweep-layers = scripts.sweep_layers:main
-train-probe = scripts.train_probe:main
