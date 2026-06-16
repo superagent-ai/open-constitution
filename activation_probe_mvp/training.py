@@ -40,7 +40,7 @@ def train_linear_probe(
             total += float(loss.item())
 
         if epoch == 0 or (epoch + 1) % 20 == 0:
-            print(f"epoch={epoch+1:03d} loss={total / max(len(loader), 1):.4f}")
+            print(f"epoch={epoch + 1:03d} loss={total / max(len(loader), 1):.4f}")
 
     return probe
 

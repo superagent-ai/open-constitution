@@ -1,0 +1,20 @@
+repos:
+  - repo: local
+    hooks:
+      - id: lint
+        name: Lint
+        entry: uv run ruff check .
+        language: system
+        pass_filenames: false
+
+      - id: format
+        name: Format
+        entry: uv run ruff format --check .
+        language: system
+        pass_filenames: false
+
+      - id: build
+        name: Build
+        entry: uv build --out-dir /tmp/open-constitution-pre-commit-build
+        language: system
+        pass_filenames: false
