@@ -28,3 +28,15 @@ guarded-generate = "scripts.guarded_generate:main"
 
 [tool.setuptools.packages.find]
 include = ["activation_probe_mvp*", "scripts*"]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.6.0",
+    "pytest>=8.0",
+    "ruff>=0.8",
+    "virtualenv<21",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
