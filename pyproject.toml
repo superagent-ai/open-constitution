@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "open-constitution"
+version = "0.1.0"
+description = "Open Constitution experiments for activation probes on open-weight models."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.2.0",
+    "transformers>=4.55.0",
+    "accelerate>=0.33.0",
+    "datasets>=2.20.0",
+    "safetensors>=0.4.3",
+    "scikit-learn>=1.4.0",
+    "tqdm>=4.66.0",
+    "numpy>=1.26.0",
+    "pillow>=12.2.0",
+    "torchvision>=0.27.0",
+]
+
+[project.scripts]
+train-probe = "scripts.train_probe:main"
+sweep-layers = "scripts.sweep_layers:main"
+guarded-generate = "scripts.guarded_generate:main"
+
+[tool.setuptools.packages.find]
+include = ["activation_probe_mvp*", "scripts*"]
