@@ -81,7 +81,7 @@ def guarded_generate(
         risk = torch.sigmoid(probe(hidden)).item()
         smoothed = smoother.update(risk)
 
-        print(f"\n[probe] step={step+1} risk={risk:.3f} smoothed={smoothed:.3f}")
+        print(f"\n[probe] step={step + 1} risk={risk:.3f} smoothed={smoothed:.3f}")
 
         if smoothed >= pause_threshold:
             partial = "".join(generated_tokens)
