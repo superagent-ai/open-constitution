@@ -31,6 +31,7 @@ include = ["activation_probe_mvp*", "scripts*"]
 
 [dependency-groups]
 dev = [
+    "modal>=1.5.0",
     "pre-commit>=4.6.0",
     "pytest>=8.0",
     "ruff>=0.8",

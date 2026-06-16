@@ -47,7 +47,7 @@ def load_model_and_tokenizer(model_id: str, device: str | None = None):
 
         model = AutoModelForImageTextToText.from_pretrained(
             model_id,
-            torch_dtype=dtype,
+            dtype=dtype,
             trust_remote_code=True,
             device_map=None,
         )
@@ -62,7 +62,7 @@ def load_model_and_tokenizer(model_id: str, device: str | None = None):
 
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
-        torch_dtype=dtype,
+        dtype=dtype,
         trust_remote_code=True,
         device_map=None,
     )

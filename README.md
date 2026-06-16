@@ -46,6 +46,63 @@ uv run guarded-generate \
   --prompt "Explain SQL injection at a high level"
 ```
 
+## Modal training
+
+Use Modal when the model download or GPU memory is too large for your local machine. The
+Modal runner uses an A100 GPU by default and persists Hugging Face downloads plus probe
+outputs in Modal Volumes.
+
+```mermaid
+flowchart LR
+    LocalRepo["Local repo"] --> ModalRun["uv run modal run modal_train.py"]
+    ModalRun --> ModalImage["Modal image"]
+    ModalImage --> A100Job["A100 training job"]
+    HFSecret["huggingface-secret HF_TOKEN"] --> A100Job
+    HFCache["open-constitution-hf-cache"] --> A100Job
+    A100Job --> HFCache
+    A100Job --> Outputs["open-constitution-outputs"]
+    Outputs --> ModalGenerate["uv run modal run modal_train.py::generate"]
+    HFCache --> ModalGenerate
+    Outputs --> Download["modal volume get"]
+    Download --> LocalProbe["local probe_out_gemma4"]
+```
+
+Confirm that Modal is authenticated:
+
+```bash
+uv run modal profile current
+```
+
+Create the Hugging Face token secret once so model downloads are authenticated:
+
+```bash
+uv run modal secret create huggingface-secret HF_TOKEN=$HF_TOKEN
+```
+
+Run Gemma 4 probe training on Modal:
+
+```bash
+uv run modal run modal_train.py
+```
+
+Run guarded generation on Modal using the saved probe, without downloading the model or probe
+locally:
+
+```bash
+uv run modal run modal_train.py::generate \
+  --prompt "Explain SQL injection at a high level"
+```
+
+Download the saved probe outputs after the job finishes:
+
+```bash
+uv run modal volume get open-constitution-outputs probe_out_gemma4 ./probe_out_gemma4
+```
+
+The first run downloads the model into the `open-constitution-hf-cache` Modal Volume. Later
+runs reuse that cache. If your Modal workspace supports larger GPUs and you want extra
+headroom, change `gpu="A100"` to `gpu="A100-80GB"` in `modal_train.py`.
+
 ## Data format
 
 `data/examples.jsonl` expects one JSON object per line:
