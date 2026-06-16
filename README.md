@@ -12,19 +12,24 @@ This is a research MVP, not production-ready safety infrastructure.
 
 ## Install
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
+Install `uv` if you do not already have it:
 
-pip install -e .
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Then install the project dependencies:
+
+```bash
+uv sync
 ```
 
 ## Quick start
 
-The default model is intentionally small so the MVP runs locally:
+The default model is Gemma 4 E2B. It is smaller than many frontier models, but still needs substantial disk and memory:
 
 ```bash
-train-probe \
+uv run train-probe \
   --model_id google/gemma-4-E2B-it \
   --data_path data/examples.jsonl \
   --layer -4 \
@@ -34,7 +39,7 @@ train-probe \
 Then run guarded generation:
 
 ```bash
-guarded-generate \
+uv run guarded-generate \
   --model_id google/gemma-4-E2B-it \
   --probe_path ./probe_out/probe.pt \
   --config_path ./probe_out/config.json \
@@ -137,7 +142,7 @@ Disable chat templates with:
 Example Gemma 4 run:
 
 ```bash
-train-probe \
+uv run train-probe \
   --model_id google/gemma-4-E2B-it \
   --data_path data/examples.jsonl \
   --layer -4 \
@@ -147,7 +152,7 @@ train-probe \
 Then:
 
 ```bash
-guarded-generate \
+uv run guarded-generate \
   --model_id google/gemma-4-E2B-it \
   --probe_path ./probe_out_gemma4/probe.pt \
   --config_path ./probe_out_gemma4/config.json \
@@ -157,10 +162,10 @@ guarded-generate \
 Layer sweep:
 
 ```bash
-sweep-layers \
+uv run sweep-layers \
   --model_id google/gemma-4-E2B-it \
   --data_path data/examples.jsonl \
   --layers="-2,-4,-6,-8,-10,-12"
 ```
 
-Note: Gemma models may require accepting Google's license terms on Hugging Face before download.
+Note: Gemma models may require accepting Google's license terms on Hugging Face before download. `google/gemma-4-E2B-it` downloads about 10 GB of weights, so use a machine or cloud runtime with enough free disk space.
