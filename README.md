@@ -121,30 +121,22 @@ For a real probe, you need thousands of examples across allowed and disallowed p
 
 ## Architecture
 
-```txt
-prompt + response
-   ↓
-target model forward pass with output_hidden_states=True
-   ↓
-selected layer hidden state at final token
-   ↓
-linear probe
-   ↓
-risk score
+```mermaid
+flowchart TD
+    Exchange["prompt + response"] --> ForwardPass["target model forward pass with output_hidden_states=True"]
+    ForwardPass --> HiddenState["selected layer hidden state at final token"]
+    HiddenState --> Probe["linear probe"]
+    Probe --> RiskScore["risk score"]
 ```
 
 During generation:
 
-```txt
-generate N tokens
-   ↓
-read selected hidden state
-   ↓
-probe risk score
-   ↓
-smooth score over a small window
-   ↓
-continue / pause / escalate / refuse
+```mermaid
+flowchart TD
+    Generate["generate N tokens"] --> ReadHiddenState["read selected hidden state"]
+    ReadHiddenState --> ProbeRisk["probe risk score"]
+    ProbeRisk --> SmoothScore["smooth score over a small window"]
+    SmoothScore --> GuardDecision["continue / pause / escalate / refuse"]
 ```
 
 ## Important limitations
