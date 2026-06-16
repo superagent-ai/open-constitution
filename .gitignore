@@ -10,3 +10,6 @@ dist/
 .venv/
 
 probe_out*/
+
+.env.local
+.env
