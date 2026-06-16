@@ -79,10 +79,12 @@ def tokenize_text(tokenizer_or_processor, text: str, device: str, max_length: in
     }
 
     if max_length is not None:
-        kwargs.update({
-            "truncation": True,
-            "max_length": max_length,
-        })
+        kwargs.update(
+            {
+                "truncation": True,
+                "max_length": max_length,
+            }
+        )
 
     try:
         inputs = tokenizer_or_processor(text=text, **kwargs)
@@ -136,6 +138,6 @@ def extract_final_token_hidden_state(
     )
 
     selected = get_selected_hidden_state(outputs, layer)  # [batch, seq, hidden]
-    final_token = selected[:, -1, :]                     # [batch, hidden]
+    final_token = selected[:, -1, :]  # [batch, hidden]
 
     return final_token.float().detach().cpu()
