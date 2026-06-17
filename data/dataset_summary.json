@@ -1,0 +1,75 @@
+{
+  "file": "data/training_data.jsonl",
+  "total_rows": 259287,
+  "source_distribution": {
+    "pairwise_safety": 159441,
+    "single_response_safety": 99846
+  },
+  "label_distribution": {
+    "0": 116525,
+    "1": 142762
+  },
+  "split_distribution": {
+    "test": 26883,
+    "train": 208138,
+    "validation": 24266
+  },
+  "behavior_distribution": {
+    "allowed_response": 116525,
+    "policy_violation": 142762
+  },
+  "prompt_intent_distribution": {
+    "unknown": 259287
+  },
+  "topic_distribution": {
+    "animal_abuse": 1917,
+    "child_abuse": 615,
+    "controversial_topics_politics": 3399,
+    "copyright_issues": 2304,
+    "cybercrime": 2803,
+    "discrimination_stereotype_injustice": 8537,
+    "discriminatory_behavior": 1396,
+    "disrupting_public_order": 745,
+    "drug_abuse_weapons_banned_substance": 6052,
+    "drugs": 7397,
+    "economic_crime": 12791,
+    "endangering_national_security": 7081,
+    "endangering_public_health": 1626,
+    "environmental_damage": 373,
+    "financial_crime_property_crime_theft": 10338,
+    "hate_speech_offensive_language": 4699,
+    "human_trafficking": 2141,
+    "insulting_behavior": 8562,
+    "mental_manipulation": 9442,
+    "misinformation_regarding_ethics_laws_and_safety": 1104,
+    "non_violent_unethical_behavior": 9021,
+    "physical_harm": 1522,
+    "policy_violation": 6,
+    "privacy_violation": 18523,
+    "psychological_harm": 164,
+    "safe": 116520,
+    "self_harm": 490,
+    "sexual_content": 381,
+    "sexually_explicit_adult_content": 1510,
+    "terrorism_organized_crime": 404,
+    "violence": 6967,
+    "violence_aiding_and_abetting_incitement": 9685,
+    "white_collar_crime": 772
+  },
+  "topic_count": 33,
+  "unique_ids": 259287,
+  "unique_prompts": 47831,
+  "unique_prompt_response_pairs": 259287,
+  "schema_fields": [
+    "id",
+    "prompt",
+    "response",
+    "label",
+    "split",
+    "topic",
+    "prompt_intent",
+    "response_behavior",
+    "dataset_version"
+  ],
+  "dataset_version": "public_safety_v1"
+}
