@@ -25,6 +25,7 @@ dependencies = [
 train-probe = "scripts.train_probe:main"
 sweep-layers = "scripts.sweep_layers:main"
 guarded-generate = "scripts.guarded_generate:main"
+prepare-training-data = "scripts.prepare_training_data:main"
 
 [tool.setuptools.packages.find]
 include = ["activation_probe_mvp*", "scripts*"]

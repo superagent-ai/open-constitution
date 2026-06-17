@@ -12,7 +12,7 @@ from activation_probe_mvp.activations import (
     load_model_and_tokenizer,
 )
 from activation_probe_mvp.chat import format_exchange
-from activation_probe_mvp.data import load_jsonl
+from activation_probe_mvp.data import balanced_sample, load_jsonl
 from activation_probe_mvp.training import evaluate_probe, save_probe, train_linear_probe
 
 
@@ -23,11 +23,18 @@ def main():
         default="google/gemma-4-E2B-it",
         help="Default is Gemma 4 E2B instruction-tuned. Also works with Qwen/Llama-style causal LMs.",
     )
-    parser.add_argument("--data_path", default="data/examples.jsonl")
+    parser.add_argument("--data_path", default="data/training_data.jsonl")
     parser.add_argument("--layer", type=int, default=-4)
-    parser.add_argument("--out_dir", default="./probe_out")
+    parser.add_argument("--out_dir", default="./probe_out_public_safety")
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument(
+        "--max_examples",
+        type=int,
+        default=20000,
+        help="Maximum examples to use after deterministic label-balanced sampling. Use 0 for all.",
+    )
+    parser.add_argument("--sample_seed", type=int, default=0)
     parser.add_argument(
         "--no_chat_template",
         action="store_true",
@@ -38,7 +45,13 @@ def main():
     print(f"Loading model: {args.model_id}")
     model, tokenizer_or_processor, device = load_model_and_tokenizer(args.model_id)
 
-    examples = load_jsonl(args.data_path)
+    all_examples = load_jsonl(args.data_path)
+    examples = balanced_sample(
+        all_examples,
+        max_examples=args.max_examples if args.max_examples > 0 else None,
+        seed=args.sample_seed,
+    )
+    print(f"Loaded {len(all_examples)} examples; training on {len(examples)}")
 
     if len(examples) < 4:
         raise ValueError("Need at least a few examples. For real use, use thousands.")
