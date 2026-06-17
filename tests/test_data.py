@@ -39,9 +39,7 @@ def test_load_jsonl_rejects_unknown_labels(tmp_path):
 
 
 def test_balanced_sample_is_deterministic_and_balances_labels():
-    examples = [
-        Example(prompt=f"safe {i}", response="ok", label=0) for i in range(10)
-    ] + [
+    examples = [Example(prompt=f"safe {i}", response="ok", label=0) for i in range(10)] + [
         Example(prompt=f"unsafe {i}", response="bad", label=1) for i in range(10)
     ]
 

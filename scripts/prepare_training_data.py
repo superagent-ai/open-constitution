@@ -70,9 +70,7 @@ def topic_from_categories(value: Any) -> str:
 
 
 def stable_key(record: dict[str, Any]) -> str:
-    return hashlib.sha256(
-        f"{record['prompt']}\0{record['response']}".encode("utf-8")
-    ).hexdigest()
+    return hashlib.sha256(f"{record['prompt']}\0{record['response']}".encode("utf-8")).hexdigest()
 
 
 def source_from_id(record_id: str) -> str:
@@ -227,7 +225,9 @@ def iter_single_response_records(
     return records
 
 
-def cap_records_diverse(records: list[dict[str, Any]], max_records: int | None) -> list[dict[str, Any]]:
+def cap_records_diverse(
+    records: list[dict[str, Any]], max_records: int | None
+) -> list[dict[str, Any]]:
     if max_records is None or max_records <= 0 or len(records) <= max_records:
         return records
 
@@ -371,17 +371,13 @@ def main() -> None:
             single_response_dataset,
             dataset_version=args.dataset_version,
             dedupe=not args.keep_duplicates,
-            splits=None
-            if args.single_response_splits == ["all"]
-            else args.single_response_splits,
+            splits=None if args.single_response_splits == ["all"] else args.single_response_splits,
             validation_fraction=args.validation_fraction,
         )
         records.extend(
             cap_records_diverse(
                 single_response_records,
-                None
-                if args.single_response_max_records == 0
-                else args.single_response_max_records,
+                None if args.single_response_max_records == 0 else args.single_response_max_records,
             )
         )
 
