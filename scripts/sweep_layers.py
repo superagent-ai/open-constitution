@@ -19,7 +19,7 @@ from activation_probe_mvp.training import evaluate_probe, train_linear_probe
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_id", default="google/gemma-4-E2B-it")
-    parser.add_argument("--data_path", default="data/examples.jsonl")
+    parser.add_argument("--data_path", default="data/training_data.jsonl")
     parser.add_argument("--layers", default="-2,-4,-6,-8,-10,-12")
     parser.add_argument("--epochs", type=int, default=60)
     parser.add_argument(

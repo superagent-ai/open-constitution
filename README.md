@@ -31,9 +31,9 @@ The default model is Gemma 4 E2B. It is smaller than many frontier models, but s
 ```bash
 uv run train-probe \
   --model_id google/gemma-4-E2B-it \
-  --data_path data/examples.jsonl \
+  --data_path data/training_data.jsonl \
   --layer -4 \
-  --out_dir ./probe_out
+  --out_dir ./probe_out_public_safety
 ```
 
 Then run guarded generation:
@@ -41,8 +41,8 @@ Then run guarded generation:
 ```bash
 uv run guarded-generate \
   --model_id google/gemma-4-E2B-it \
-  --probe_path ./probe_out/probe.pt \
-  --config_path ./probe_out/config.json \
+  --probe_path ./probe_out_public_safety/probe.pt \
+  --config_path ./probe_out_public_safety/config.json \
   --prompt "Explain SQL injection at a high level"
 ```
 
@@ -64,7 +64,7 @@ flowchart LR
     Outputs --> ModalGenerate["uv run modal run modal_train.py::generate"]
     HFCache --> ModalGenerate
     Outputs --> Download["modal volume get"]
-    Download --> LocalProbe["local probe_out_gemma4"]
+    Download --> LocalProbe["local probe_out_public_safety"]
 ```
 
 Confirm that Modal is authenticated:
@@ -85,6 +85,10 @@ Run Gemma 4 probe training on Modal:
 uv run modal run modal_train.py
 ```
 
+The default Modal training run uses a deterministic label-balanced sample of 20,000 examples so
+activation extraction finishes in a practical window. To run on the full dataset, pass
+`--max-examples 0`, but expect a much longer job.
+
 Run guarded generation on Modal using the saved probe, without downloading the model or probe
 locally:
 
@@ -96,7 +100,7 @@ uv run modal run modal_train.py::generate \
 Download the saved probe outputs after the job finishes:
 
 ```bash
-uv run modal volume get open-constitution-outputs probe_out_gemma4 ./probe_out_gemma4
+uv run modal volume get open-constitution-outputs probe_out_public_safety ./probe_out_public_safety
 ```
 
 The first run downloads the model into the `open-constitution-hf-cache` Modal Volume. Later
@@ -105,7 +109,7 @@ headroom, change `gpu="A100"` to `gpu="A100-80GB"` in `modal_train.py`.
 
 ## Data format
 
-`data/examples.jsonl` expects one JSON object per line:
+`data/training_data.jsonl` expects one JSON object per line:
 
 ```json
 {"prompt":"...", "response":"...", "label":0}
@@ -118,6 +122,38 @@ Where:
 - `label: 1` = restricted / unsafe
 
 For a real probe, you need thousands of examples across allowed and disallowed policy boundaries.
+
+## Training Dataset
+
+`data/training_data.jsonl` contains metadata-rich prompt/response examples for probe training.
+It stays compatible with the current loader because every row includes `prompt`, `response`,
+and binary `label`.
+
+Additional metadata fields include `split`, `topic`, `prompt_intent`, `response_behavior`, and
+`dataset_version`.
+
+For this dataset, `label: 1` means unsafe assistant behavior, not merely unsafe user intent.
+Malicious prompts paired with safe refusals are labeled `0`; this is intentional so the probe
+learns not to flag every refusal about a dangerous topic as unsafe.
+
+To prepare the training data from the configured public safety sources, run:
+
+```bash
+uv run prepare-training-data \
+  --output_path data/training_data.jsonl \
+  --summary_path data/dataset_summary.json
+```
+
+Train on the converted dataset with:
+
+```bash
+uv run train-probe \
+  --model_id google/gemma-4-E2B-it \
+  --data_path data/training_data.jsonl \
+  --layer -4 \
+  --out_dir ./probe_out_public_safety \
+  --max_examples 20000
+```
 
 ## Architecture
 
@@ -193,9 +229,9 @@ Example Gemma 4 run:
 ```bash
 uv run train-probe \
   --model_id google/gemma-4-E2B-it \
-  --data_path data/examples.jsonl \
+  --data_path data/training_data.jsonl \
   --layer -4 \
-  --out_dir ./probe_out_gemma4
+  --out_dir ./probe_out_public_safety
 ```
 
 Then:
@@ -203,8 +239,8 @@ Then:
 ```bash
 uv run guarded-generate \
   --model_id google/gemma-4-E2B-it \
-  --probe_path ./probe_out_gemma4/probe.pt \
-  --config_path ./probe_out_gemma4/config.json \
+  --probe_path ./probe_out_public_safety/probe.pt \
+  --config_path ./probe_out_public_safety/config.json \
   --prompt "Explain SQL injection at a high level"
 ```
 
@@ -213,7 +249,7 @@ Layer sweep:
 ```bash
 uv run sweep-layers \
   --model_id google/gemma-4-E2B-it \
-  --data_path data/examples.jsonl \
+  --data_path data/training_data.jsonl \
   --layers="-2,-4,-6,-8,-10,-12"
 ```
 

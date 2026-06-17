@@ -13,9 +13,10 @@ OUTPUT_DIR = "/outputs"
 REPO_ROOT = Path(__file__).parent
 
 DEFAULT_MODEL_ID = "google/gemma-4-E2B-it"
-DEFAULT_DATA_PATH = "data/examples.jsonl"
-DEFAULT_OUT_DIR = "probe_out_gemma4"
+DEFAULT_DATA_PATH = "data/training_data.jsonl"
+DEFAULT_OUT_DIR = "probe_out_public_safety"
 DEFAULT_PROMPT = "Explain SQL injection at a high level"
+DEFAULT_MAX_EXAMPLES = 20_000
 
 FALLBACK_PROJECT_DEPENDENCIES = [
     "torch>=2.2.0",
@@ -75,6 +76,8 @@ def train_probe(
     out_dir: str = DEFAULT_OUT_DIR,
     epochs: int = 100,
     lr: float = 1e-3,
+    max_examples: int = DEFAULT_MAX_EXAMPLES,
+    sample_seed: int = 0,
     no_chat_template: bool = False,
 ) -> str:
     os.environ["HF_HOME"] = HF_CACHE_DIR
@@ -98,6 +101,10 @@ def train_probe(
         str(epochs),
         "--lr",
         str(lr),
+        "--max_examples",
+        str(max_examples),
+        "--sample_seed",
+        str(sample_seed),
     ]
 
     if no_chat_template:
@@ -169,6 +176,8 @@ def main(
     out_dir: str = DEFAULT_OUT_DIR,
     epochs: int = 100,
     lr: float = 1e-3,
+    max_examples: int = DEFAULT_MAX_EXAMPLES,
+    sample_seed: int = 0,
     no_chat_template: bool = False,
 ):
     remote_out_dir = train_probe.remote(
@@ -178,6 +187,8 @@ def main(
         out_dir=out_dir,
         epochs=epochs,
         lr=lr,
+        max_examples=max_examples,
+        sample_seed=sample_seed,
         no_chat_template=no_chat_template,
     )
     print(f"Saved probe outputs to Modal Volume path: {remote_out_dir}")
