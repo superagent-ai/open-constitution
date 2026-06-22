@@ -23,6 +23,8 @@ dependencies = [
 
 [project.scripts]
 train-probe = "scripts.train_probe:main"
+train-exchange-classifier = "scripts.train_exchange_classifier:main"
+benchmark-latency = "scripts.benchmark_latency:main"
 sweep-layers = "scripts.sweep_layers:main"
 guarded-generate = "scripts.guarded_generate:main"
 

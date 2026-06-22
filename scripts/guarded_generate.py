@@ -13,6 +13,7 @@ from activation_probe_mvp.activations import (
     tokenize_text,
 )
 from activation_probe_mvp.chat import format_generation_prompt
+from activation_probe_mvp.exchange_classifier import DEFAULT_REFUSAL, ExchangeClassifier
 from activation_probe_mvp.modeling import LinearProbe, RiskSmoother
 
 
@@ -35,6 +36,8 @@ def guarded_generate(
     pause_threshold: float,
     smoothing_window: int,
     use_chat_template: bool,
+    classifier: ExchangeClassifier | None = None,
+    refusal_message: str = DEFAULT_REFUSAL,
 ):
     input_text = format_generation_prompt(
         tokenizer_or_processor=tokenizer_or_processor,
@@ -51,6 +54,12 @@ def guarded_generate(
 
     smoother = RiskSmoother(window_size=smoothing_window)
     generated_tokens = []
+    pending_tokens = []
+
+    def flush_pending_tokens() -> None:
+        if pending_tokens:
+            print("".join(pending_tokens), end="", flush=True)
+            pending_tokens.clear()
 
     print("\n--- guarded generation ---\n")
 
@@ -67,8 +76,7 @@ def guarded_generate(
 
         token_text = decode_token(tokenizer_or_processor, next_token)
         generated_tokens.append(token_text)
-
-        print(token_text, end="", flush=True)
+        pending_tokens.append(token_text)
 
         should_probe = (step + 1) % probe_every_n_tokens == 0
 
@@ -81,26 +89,66 @@ def guarded_generate(
         risk = torch.sigmoid(probe(hidden)).item()
         smoothed = smoother.update(risk)
 
-        print(f"\n[probe] step={step + 1} risk={risk:.3f} smoothed={smoothed:.3f}")
-
         if smoothed >= pause_threshold:
             partial = "".join(generated_tokens)
 
-            print("\n\n[guard] PAUSE: high risk from activation probe.")
-            print("[guard] In production: run exchange classifier on prompt + partial response.")
-            print("\n--- partial response ---")
-            print(partial)
+            print(f"\n[probe] step={step + 1} risk={risk:.3f} smoothed={smoothed:.3f}")
+            print("[guard] PAUSE: high risk from activation probe.")
 
+            if classifier is None:
+                print("[guard] No exchange classifier configured; returning paused state.")
+                print("\n--- partial response ---")
+                print(partial)
+
+                return {
+                    "status": "paused",
+                    "risk": risk,
+                    "smoothed_risk": smoothed,
+                    "partial_response": partial,
+                }
+
+            decision = classifier.classify(prompt, partial)
+            print(
+                "[classifier] "
+                f"verdict={decision.verdict} score={decision.score:.3f} "
+                f"allow_threshold={decision.allow_threshold:.3f} "
+                f"block_threshold={decision.block_threshold:.3f}"
+            )
+
+            if decision.verdict == "allow":
+                flush_pending_tokens()
+                continue
+
+            if decision.verdict == "uncertain":
+                print("[guard] UNCERTAIN: holding buffered tokens for tighter monitoring.")
+                return {
+                    "status": "uncertain",
+                    "risk": risk,
+                    "smoothed_risk": smoothed,
+                    "classifier_score": decision.score,
+                    "classifier_verdict": decision.verdict,
+                    "held_response_chars": len(partial),
+                }
+
+            print("\n--- refusal ---")
+            print(refusal_message)
             return {
-                "status": "paused",
+                "status": "blocked",
                 "risk": risk,
                 "smoothed_risk": smoothed,
-                "partial_response": partial,
+                "classifier_score": decision.score,
+                "classifier_verdict": decision.verdict,
+                "response": refusal_message,
+                "held_response_chars": len(partial),
             }
+
+        flush_pending_tokens()
+        print(f"\n[probe] step={step + 1} risk={risk:.3f} smoothed={smoothed:.3f}")
 
         if smoothed >= threshold:
             print("[guard] suspicious: would escalate soon if risk persists.")
 
+    flush_pending_tokens()
     final = "".join(generated_tokens)
 
     print("\n\n[guard] completed without pause.")
@@ -116,6 +164,14 @@ def main():
     parser.add_argument("--model_id", default=None)
     parser.add_argument("--probe_path", required=True)
     parser.add_argument("--config_path", required=True)
+    parser.add_argument("--classifier_dir", default=None)
+    parser.add_argument("--classifier_allow_threshold", type=float, default=None)
+    parser.add_argument("--classifier_block_threshold", type=float, default=None)
+    parser.add_argument(
+        "--skip_classifier",
+        action="store_true",
+        help="Keep probe-only pause behavior even when a classifier directory is available.",
+    )
     parser.add_argument("--prompt", required=True)
     parser.add_argument("--max_new_tokens", type=int, default=80)
     parser.add_argument(
@@ -139,6 +195,14 @@ def main():
     probe.load_state_dict(state)
     probe.eval()
 
+    classifier = None
+    if args.classifier_dir is not None and not args.skip_classifier:
+        classifier = ExchangeClassifier.from_pretrained(
+            args.classifier_dir,
+            allow_threshold=args.classifier_allow_threshold,
+            block_threshold=args.classifier_block_threshold,
+        )
+
     result = guarded_generate(
         model=model,
         tokenizer_or_processor=tokenizer_or_processor,
@@ -152,6 +216,7 @@ def main():
         pause_threshold=float(config["pause_threshold"]),
         smoothing_window=int(config["smoothing_window"]),
         use_chat_template=use_chat_template,
+        classifier=classifier,
     )
 
     print("\n\n--- result ---")

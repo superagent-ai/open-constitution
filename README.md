@@ -2,11 +2,12 @@
 
 A minimal Python + PyTorch + Transformers research project for Anthropic-style activation probes on open-weight models.
 
-It does three things:
+It does four things:
 
 1. Collects hidden-state activations from a target model.
 2. Trains a tiny linear probe to classify safe vs unsafe exchanges.
 3. Runs a guarded generation loop that probes hidden states during generation and pauses/escalates when risk rises.
+4. Trains and runs a ModernBERT exchange classifier when the probe pauses.
 
 This is a research MVP, not production-ready safety infrastructure.
 
@@ -43,6 +44,31 @@ uv run guarded-generate \
   --model_id google/gemma-4-E2B-it \
   --probe_path ./probe_out/probe.pt \
   --config_path ./probe_out/config.json \
+  --prompt "Explain SQL injection at a high level"
+```
+
+Train the second-stage ModernBERT exchange classifier on the Git LFS-backed dataset:
+
+```bash
+uv run train-exchange-classifier \
+  --model_id answerdotai/ModernBERT-base \
+  --data_path data/training_data.jsonl \
+  --out_dir ./classifier_out \
+  --epochs 5 \
+  --batch_size 8 \
+  --max_length 512 \
+  --prefix_augment
+```
+
+Then pass the classifier artifact to guarded generation. When the activation probe pauses,
+the partial exchange is scored by ModernBERT before buffered tokens are released:
+
+```bash
+uv run guarded-generate \
+  --model_id google/gemma-4-E2B-it \
+  --probe_path ./probe_out/probe.pt \
+  --config_path ./probe_out/config.json \
+  --classifier_dir ./classifier_out \
   --prompt "Explain SQL injection at a high level"
 ```
 
@@ -93,6 +119,29 @@ uv run modal run modal_train.py::generate \
   --prompt "Explain SQL injection at a high level"
 ```
 
+Train the ModernBERT exchange classifier on Modal:
+
+```bash
+uv run modal run modal_train.py::train_classifier \
+  --data_path data/training_data.jsonl \
+  --output-dir classifier_out_modernbert
+```
+
+Classifier training logs are written to the Modal output volume. Download them with:
+
+```bash
+uv run modal volume get open-constitution-outputs classifier_out_modernbert/train.log ./train.log
+```
+
+Run guarded generation on Modal with both the probe and classifier artifacts:
+
+```bash
+uv run modal run modal_train.py::generate \
+  --probe_dir probe_out_gemma4 \
+  --classifier_dir classifier_out_modernbert \
+  --prompt "Explain SQL injection at a high level"
+```
+
 Download the saved probe outputs after the job finishes:
 
 ```bash
@@ -105,7 +154,9 @@ headroom, change `gpu="A100"` to `gpu="A100-80GB"` in `modal_train.py`.
 
 ## Data format
 
-`data/examples.jsonl` expects one JSON object per line:
+`data/training_data.jsonl` is tracked with Git LFS and is the intended training source for
+the ModernBERT classifier. `data/examples.jsonl` is a tiny smoke-test fixture. Both files
+expect one JSON object per line:
 
 ```json
 {"prompt":"...", "response":"...", "label":0}
@@ -148,7 +199,7 @@ This MVP:
 - Uses tiny example data.
 - Does not implement Anthropic's exact training tricks.
 - Does not patch vLLM.
-- Does not replace a real exchange classifier.
+- Uses a lightweight ModernBERT exchange classifier as the second-stage scorer.
 
 Recommended next steps:
 
@@ -156,7 +207,7 @@ Recommended next steps:
 2. Test multiple layers and layer combinations.
 3. Add token-level labels or soft token weighting.
 4. Add score smoothing and calibration curves.
-5. Add a second-stage exchange classifier.
+5. Calibrate the probe and classifier thresholds on held-out data.
 6. Integrate into vLLM once the probe is validated.
 
 
