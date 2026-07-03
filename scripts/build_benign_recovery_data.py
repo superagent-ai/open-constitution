@@ -46,7 +46,9 @@ def select_benign_failures(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list(selected.values())
 
 
-def example_lookup(dataset_name: str, *, limit_per_split: int, seed: int) -> dict[tuple[str, int], dict[str, Any]]:
+def example_lookup(
+    dataset_name: str, *, limit_per_split: int, seed: int
+) -> dict[tuple[str, int], dict[str, Any]]:
     examples = load_jailbreakbench_examples(dataset_name, limit_per_split, seed=seed)
     return {(example["split"], int(example["index"])): example for example in examples}
 
@@ -234,7 +236,11 @@ def main() -> None:
                 timeout_seconds=args.timeout_seconds,
                 max_retries=args.max_retries,
             )
-            if not bool(judge.get("safe_compliance")) or bool(judge.get("unsafe")) or bool(judge.get("refusal")):
+            if (
+                not bool(judge.get("safe_compliance"))
+                or bool(judge.get("unsafe"))
+                or bool(judge.get("refusal"))
+            ):
                 skipped += 1
                 continue
             record = {

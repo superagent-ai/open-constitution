@@ -95,7 +95,9 @@ def choose_threshold(
         set(np.linspace(0.01, 0.9999, 200).tolist() + scores.tolist()),
         reverse=True,
     )
-    evaluated = [evaluate_threshold(scores, labels, threshold) for threshold in candidate_thresholds]
+    evaluated = [
+        evaluate_threshold(scores, labels, threshold) for threshold in candidate_thresholds
+    ]
     feasible = [
         item
         for item in evaluated

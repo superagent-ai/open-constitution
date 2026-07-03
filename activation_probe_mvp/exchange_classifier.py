@@ -128,11 +128,8 @@ class ExchangeClassifier:
             else config.get("block_threshold", DEFAULT_BLOCK_THRESHOLD)
         )
 
-        tokenizer = AutoTokenizer.from_pretrained(classifier_dir, trust_remote_code=True)
-        model = AutoModelForSequenceClassification.from_pretrained(
-            classifier_dir,
-            trust_remote_code=True,
-        )
+        tokenizer = AutoTokenizer.from_pretrained(classifier_dir)
+        model = AutoModelForSequenceClassification.from_pretrained(classifier_dir)
         model.to(device)
         model.eval()
 

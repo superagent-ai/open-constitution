@@ -290,13 +290,12 @@ def train_exchange_classifier(
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
     from transformers import DataCollatorWithPadding, Trainer, TrainingArguments
 
-    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(model_id)
     model = AutoModelForSequenceClassification.from_pretrained(
         model_id,
         num_labels=num_labels,
         id2label={int(key): value for key, value in label_mapping.items()},
         label2id={value: int(key) for key, value in label_mapping.items()},
-        trust_remote_code=True,
     )
 
     train_dataset = tokenize_dataset(

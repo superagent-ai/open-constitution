@@ -120,7 +120,7 @@ def _prepare_attention_mask(inputs, input_ids: torch.Tensor) -> torch.Tensor:
 
 def load_probe(probe_path: str | Path, hidden_size: int) -> LinearProbe:
     probe = LinearProbe(hidden_size)
-    state = torch.load(probe_path, map_location="cpu")
+    state = torch.load(probe_path, map_location="cpu", weights_only=True)
     probe.load_state_dict(state)
     probe.eval()
     return probe
@@ -348,7 +348,9 @@ def load_jailbreakbench_examples(
                 }
             )
             counts[split] += 1
-            if all(limit is not None and counts[key] >= int(limit) for key, limit in limits.items()):
+            if all(
+                limit is not None and counts[key] >= int(limit) for key, limit in limits.items()
+            ):
                 break
 
         return examples

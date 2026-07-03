@@ -226,7 +226,7 @@ def main():
     model, tokenizer_or_processor, device = load_model_and_tokenizer(model_id)
 
     probe = LinearProbe(config["hidden_size"])
-    state = torch.load(args.probe_path, map_location="cpu")
+    state = torch.load(args.probe_path, map_location="cpu", weights_only=True)
     probe.load_state_dict(state)
     probe.eval()
 

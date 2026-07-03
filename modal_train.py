@@ -172,7 +172,9 @@ def run_build_three_class_classifier_data(
 ) -> str:
     outputs.reload()
     remote_primary_input_path = (
-        primary_input_path if primary_input_path.startswith("/") else f"{APP_DIR}/{primary_input_path}"
+        primary_input_path
+        if primary_input_path.startswith("/")
+        else f"{APP_DIR}/{primary_input_path}"
     )
     remote_out_path = out_path if out_path.startswith("/") else f"{OUTPUT_DIR}/{out_path}"
 
@@ -1050,7 +1052,9 @@ def benchmark_jailbreak(
         max_examples=max_examples,
         example_offset=example_offset,
         only_split=only_split,
-        example_indices=[int(index) for index in example_index.split(",")] if example_index else None,
+        example_indices=[int(index) for index in example_index.split(",")]
+        if example_index
+        else None,
         seed=seed,
         pause_threshold=pause_threshold,
         probe_every_n_tokens=probe_every_n_tokens,
