@@ -23,9 +23,16 @@ dependencies = [
 
 [project.scripts]
 train-probe = "scripts.train_probe:main"
+prepare-training-data = "scripts.prepare_training_data:main"
+train-exchange-classifier = "scripts.train_exchange_classifier:main"
+benchmark-latency = "scripts.benchmark_latency:main"
+benchmark-jailbreak = "scripts.benchmark_jailbreak:main"
+build-three-class-classifier-data = "scripts.build_three_class_classifier_data:main"
+build-benign-recovery-data = "scripts.build_benign_recovery_data:main"
+build-toxicchat-classifier-data = "scripts.build_toxicchat_classifier_data:main"
+calibrate-exchange-classifier = "scripts.calibrate_exchange_classifier:main"
 sweep-layers = "scripts.sweep_layers:main"
 guarded-generate = "scripts.guarded_generate:main"
-prepare-training-data = "scripts.prepare_training_data:main"
 
 [tool.setuptools.packages.find]
 include = ["activation_probe_mvp*", "scripts*"]

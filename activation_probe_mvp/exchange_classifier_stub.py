@@ -1,13 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-
-@dataclass
-class ExchangeDecision:
-    block: bool
-    reason: str
-    score: float
+from .exchange_classifier import ExchangeDecision, decision_from_score
 
 
 def classify_exchange_stub(prompt: str, partial_response: str) -> ExchangeDecision:
@@ -36,8 +29,7 @@ def classify_exchange_stub(prompt: str, partial_response: str) -> ExchangeDecisi
     hits = sum(1 for k in suspicious_keywords if k in text)
     score = min(1.0, hits / 2.0)
 
-    return ExchangeDecision(
-        block=score >= 0.5,
+    return decision_from_score(
         score=score,
         reason="keyword_stub_only_do_not_use_in_production",
     )
