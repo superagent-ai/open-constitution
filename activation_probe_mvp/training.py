@@ -75,7 +75,7 @@ def save_probe(probe: LinearProbe, out_dir: str | Path, config: dict) -> None:
 
 def load_probe(probe_path: str | Path, hidden_size: int) -> LinearProbe:
     probe = LinearProbe(hidden_size)
-    state = torch.load(probe_path, map_location="cpu")
+    state = torch.load(probe_path, map_location="cpu", weights_only=True)
     probe.load_state_dict(state)
     probe.eval()
     return probe
