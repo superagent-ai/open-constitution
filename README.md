@@ -279,6 +279,23 @@ curl "$API_URL/v1/jobs/$JOB_ID" \
   -H "Authorization: Bearer $API_KEY"
 ```
 
+Running jobs include live progress when available:
+
+```json
+{
+  "status": "running",
+  "progress": {
+    "phase": "training",
+    "step": 100000,
+    "total_steps": 300390,
+    "percent": 33.29,
+    "epoch": 1.66,
+    "loss": 0.1887,
+    "eta_seconds": 47400
+  }
+}
+```
+
 Start classifier training:
 
 ```bash

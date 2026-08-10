@@ -94,7 +94,7 @@ def publish_artifact(
         repo_id=repo_id,
         repo_type="model",
         commit_message=commit_message,
-        ignore_patterns=["checkpoint-*", "checkpoint-*/**", "train.log"],
+        ignore_patterns=["checkpoint-*", "checkpoint-*/**", "progress.json", "train.log"],
     )
     return {
         "artifact_id": artifact_id,

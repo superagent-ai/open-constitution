@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from activation_probe_mvp.data import Example
@@ -11,6 +13,7 @@ from activation_probe_mvp.exchange_training import (
     split_records,
     trainer_processing_kwargs,
     validate_jsonl_source,
+    write_training_progress,
 )
 
 
@@ -32,6 +35,27 @@ def test_validate_jsonl_source_rejects_lfs_pointer(tmp_path):
 
     with pytest.raises(ValueError, match="Git LFS pointer"):
         validate_jsonl_source(data_path)
+
+
+def test_write_training_progress_atomically_adds_timestamp(tmp_path):
+    progress_path = tmp_path / "progress.json"
+
+    write_training_progress(
+        progress_path,
+        {
+            "phase": "training",
+            "step": 100,
+            "total_steps": 400,
+            "percent": 25.0,
+        },
+    )
+
+    progress = json.loads(progress_path.read_text(encoding="utf-8"))
+    assert progress["phase"] == "training"
+    assert progress["step"] == 100
+    assert progress["percent"] == 25.0
+    assert progress["updated_at"].endswith("+00:00")
+    assert not (tmp_path / "progress.json.tmp").exists()
 
 
 def test_build_classifier_records_adds_deterministic_prefix_examples():

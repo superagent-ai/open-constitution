@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import random
 import inspect
+import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +27,18 @@ LABEL_MAPPING_THREE_CLASS = {
     "2": "unsafe_compliance",
 }
 LFS_POINTER_PREFIX = "version https://git-lfs.github.com/spec/v1"
+
+
+def write_training_progress(path: str | Path, payload: dict[str, Any]) -> None:
+    progress_path = Path(path)
+    progress_path.parent.mkdir(parents=True, exist_ok=True)
+    enriched = {
+        **payload,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    temporary_path = progress_path.with_suffix(f"{progress_path.suffix}.tmp")
+    temporary_path.write_text(json.dumps(enriched), encoding="utf-8")
+    temporary_path.replace(progress_path)
 
 
 @dataclass(frozen=True)
@@ -267,9 +281,13 @@ def train_exchange_classifier(
     save_steps: int = 5000,
     disable_tqdm: bool = True,
     resume_from_checkpoint: str | None = None,
+    progress_path: str | Path | None = None,
 ) -> dict[str, Any]:
     if not 0 <= allow_threshold < block_threshold <= 1:
         raise ValueError("thresholds must satisfy 0 <= allow_threshold < block_threshold <= 1")
+
+    if progress_path is not None:
+        write_training_progress(progress_path, {"phase": "loading_data", "percent": 0.0})
 
     resolved_data_path = validate_jsonl_source(data_path)
     examples = load_jsonl(resolved_data_path)
@@ -286,9 +304,19 @@ def train_exchange_classifier(
         validation_size=validation_size,
         seed=seed,
     )
+    if progress_path is not None:
+        write_training_progress(
+            progress_path,
+            {
+                "phase": "preparing_model",
+                "percent": 0.0,
+                "train_records": len(train_records),
+                "validation_records": len(val_records),
+            },
+        )
 
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
-    from transformers import DataCollatorWithPadding, Trainer, TrainingArguments
+    from transformers import DataCollatorWithPadding, Trainer, TrainerCallback, TrainingArguments
 
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     model = AutoModelForSequenceClassification.from_pretrained(
@@ -336,6 +364,61 @@ def train_exchange_classifier(
             **training_args_kwargs,
         )
 
+    callbacks = []
+    if progress_path is not None:
+
+        class ProgressCallback(TrainerCallback):
+            def __init__(self):
+                self.started_at = time.monotonic()
+                self.initial_step = 0
+                self.last_logs: dict[str, Any] = {}
+
+            def record(self, state, *, phase: str, logs: dict[str, Any] | None = None):
+                step = int(state.global_step)
+                total_steps = int(state.max_steps)
+                elapsed_seconds = max(time.monotonic() - self.started_at, 0.0)
+                completed_steps = max(step - self.initial_step, 0)
+                steps_per_second = (
+                    completed_steps / elapsed_seconds
+                    if completed_steps > 0 and elapsed_seconds > 0
+                    else 0
+                )
+                remaining_steps = max(total_steps - step, 0)
+                eta_seconds = remaining_steps / steps_per_second if steps_per_second > 0 else None
+                log_values = logs or {}
+                loss = log_values.get("loss")
+                learning_rate = log_values.get("learning_rate")
+                write_training_progress(
+                    progress_path,
+                    {
+                        "phase": phase,
+                        "step": step,
+                        "total_steps": total_steps,
+                        "percent": round(100 * step / total_steps, 2) if total_steps else 0.0,
+                        "epoch": float(state.epoch) if state.epoch is not None else None,
+                        "total_epochs": float(epochs),
+                        "loss": float(loss) if loss is not None else None,
+                        "learning_rate": (
+                            float(learning_rate) if learning_rate is not None else None
+                        ),
+                        "elapsed_seconds": round(elapsed_seconds),
+                        "eta_seconds": round(eta_seconds) if eta_seconds is not None else None,
+                    },
+                )
+
+            def on_train_begin(self, args, state, control, **kwargs):
+                self.initial_step = int(state.global_step)
+                self.record(state, phase="training")
+
+            def on_log(self, args, state, control, logs=None, **kwargs):
+                self.last_logs = logs or self.last_logs
+                self.record(state, phase="training", logs=logs)
+
+            def on_train_end(self, args, state, control, **kwargs):
+                self.record(state, phase="training_complete", logs=self.last_logs)
+
+        callbacks.append(ProgressCallback())
+
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -343,13 +426,40 @@ def train_exchange_classifier(
         eval_dataset=val_dataset,
         data_collator=DataCollatorWithPadding(tokenizer=tokenizer),
         compute_metrics=compute_classifier_metrics,
+        callbacks=callbacks,
         **trainer_processing_kwargs(Trainer, tokenizer),
     )
 
     trainer.train(resume_from_checkpoint=resume_from_checkpoint)
+    if progress_path is not None:
+        write_training_progress(
+            progress_path,
+            {
+                "phase": "evaluating",
+                "step": int(trainer.state.global_step),
+                "total_steps": int(trainer.state.max_steps),
+                "percent": 100.0,
+                "epoch": float(trainer.state.epoch) if trainer.state.epoch is not None else None,
+                "total_epochs": float(epochs),
+                "eta_seconds": None,
+            },
+        )
     metrics = trainer.evaluate()
     trainer.save_model(str(out_dir))
     tokenizer.save_pretrained(str(out_dir))
+    if progress_path is not None:
+        write_training_progress(
+            progress_path,
+            {
+                "phase": "completed",
+                "step": int(trainer.state.global_step),
+                "total_steps": int(trainer.state.max_steps),
+                "percent": 100.0,
+                "epoch": float(trainer.state.epoch) if trainer.state.epoch is not None else None,
+                "total_epochs": float(epochs),
+                "eta_seconds": 0,
+            },
+        )
 
     metadata = {
         "train_records": len(train_records),

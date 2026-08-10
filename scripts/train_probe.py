@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
+from datetime import datetime, timezone
+from pathlib import Path
 
 import torch
 from tqdm import tqdm
@@ -14,6 +17,24 @@ from activation_probe_mvp.activations import (
 from activation_probe_mvp.chat import format_exchange
 from activation_probe_mvp.data import balanced_sample, load_jsonl
 from activation_probe_mvp.training import evaluate_probe, save_probe, train_linear_probe
+
+
+def write_progress(path: str | None, payload: dict) -> None:
+    if path is None:
+        return
+    progress_path = Path(path)
+    progress_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = progress_path.with_suffix(f"{progress_path.suffix}.tmp")
+    temporary_path.write_text(
+        json.dumps(
+            {
+                **payload,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    temporary_path.replace(progress_path)
 
 
 def main():
@@ -35,6 +56,7 @@ def main():
         help="Maximum examples to use after deterministic label-balanced sampling. Use 0 for all.",
     )
     parser.add_argument("--sample_seed", type=int, default=0)
+    parser.add_argument("--progress_path", default=None)
     parser.add_argument(
         "--no_chat_template",
         action="store_true",
@@ -42,6 +64,7 @@ def main():
     )
     args = parser.parse_args()
 
+    write_progress(args.progress_path, {"phase": "loading_model", "percent": 0.0})
     print(f"Loading model: {args.model_id}")
     model, tokenizer_or_processor, device = load_model_and_tokenizer(args.model_id)
 
@@ -66,8 +89,20 @@ def main():
 
     print(f"Extracting activations from layer {args.layer} on {device}")
     print(f"Chat template enabled: {use_chat_template}")
+    extraction_started_at = time.monotonic()
+    progress_interval = max(len(examples) // 100, 1)
+    write_progress(
+        args.progress_path,
+        {
+            "phase": "extracting_activations",
+            "examples_processed": 0,
+            "total_examples": len(examples),
+            "percent": 0.0,
+            "eta_seconds": None,
+        },
+    )
 
-    for ex in tqdm(examples):
+    for index, ex in enumerate(tqdm(examples), start=1):
         text = format_exchange(
             tokenizer_or_processor=tokenizer_or_processor,
             prompt=ex.prompt,
@@ -85,11 +120,39 @@ def main():
 
         Xs.append(hidden.squeeze(0))
         ys.append(ex.label)
+        if index % progress_interval == 0 or index == len(examples):
+            elapsed_seconds = max(time.monotonic() - extraction_started_at, 0.0)
+            examples_per_second = index / elapsed_seconds if elapsed_seconds > 0 else 0
+            remaining_examples = len(examples) - index
+            eta_seconds = (
+                remaining_examples / examples_per_second if examples_per_second > 0 else None
+            )
+            write_progress(
+                args.progress_path,
+                {
+                    "phase": "extracting_activations",
+                    "examples_processed": index,
+                    "total_examples": len(examples),
+                    "percent": round(95 * index / len(examples), 2),
+                    "elapsed_seconds": round(elapsed_seconds),
+                    "eta_seconds": round(eta_seconds) if eta_seconds is not None else None,
+                },
+            )
 
     X = torch.stack(Xs)
     y = torch.tensor(ys, dtype=torch.float32)
 
     print(f"Training probe on X={tuple(X.shape)}")
+    write_progress(
+        args.progress_path,
+        {
+            "phase": "training_probe",
+            "examples_processed": len(examples),
+            "total_examples": len(examples),
+            "percent": 95.0,
+            "eta_seconds": None,
+        },
+    )
 
     probe = train_linear_probe(
         X=X,
@@ -117,6 +180,16 @@ def main():
     }
 
     save_probe(probe, args.out_dir, config)
+    write_progress(
+        args.progress_path,
+        {
+            "phase": "completed",
+            "examples_processed": len(examples),
+            "total_examples": len(examples),
+            "percent": 100.0,
+            "eta_seconds": 0,
+        },
+    )
 
     print(f"Saved probe to {args.out_dir}")
 

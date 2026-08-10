@@ -31,6 +31,11 @@ async def test_spawn_probe_uses_fixed_dataset_and_scoped_output(monkeypatch):
     function = FakeFunction()
     monkeypatch.setattr(modal_client, "_function", lambda _name: function)
 
+    async def ignore_registration(_job_id, _artifact_id):
+        return None
+
+    monkeypatch.setattr(modal_client, "_register_job", ignore_registration)
+
     job_id = await modal_client.spawn_probe(
         ProbeTrainRequest(max_examples=50),
         artifact_id="a" * 32,
@@ -46,6 +51,11 @@ async def test_spawn_probe_uses_fixed_dataset_and_scoped_output(monkeypatch):
 async def test_spawn_classifier_uses_fixed_dataset_and_scoped_output(monkeypatch):
     function = FakeFunction()
     monkeypatch.setattr(modal_client, "_function", lambda _name: function)
+
+    async def ignore_registration(_job_id, _artifact_id):
+        return None
+
+    monkeypatch.setattr(modal_client, "_register_job", ignore_registration)
 
     job_id = await modal_client.spawn_classifier(
         ClassifierTrainRequest(epochs=1),
@@ -120,7 +130,35 @@ async def test_poll_job_maps_modal_state(monkeypatch, get_impl, expected_status)
     FakeFunctionCall.get_impl = get_impl
     monkeypatch.setattr(modal_client.modal, "FunctionCall", FakeFunctionCall)
 
+    async def no_progress(_job_id):
+        return None
+
+    monkeypatch.setattr(modal_client, "_job_progress", no_progress)
+
     result = await modal_client.poll_job("fc-test")
 
     assert result["status"] == expected_status
     assert "sensitive remote details" not in repr(result)
+
+
+@pytest.mark.anyio
+async def test_poll_running_job_includes_progress(monkeypatch):
+    FakeFunctionCall.get_impl = FakeGet(error=TimeoutError())
+    monkeypatch.setattr(modal_client.modal, "FunctionCall", FakeFunctionCall)
+
+    async def current_progress(_job_id):
+        return {
+            "phase": "training",
+            "step": 100,
+            "total_steps": 400,
+            "percent": 25.0,
+            "eta_seconds": 900,
+        }
+
+    monkeypatch.setattr(modal_client, "_job_progress", current_progress)
+
+    result = await modal_client.poll_job("fc-test")
+
+    assert result["status"] == "running"
+    assert result["progress"]["percent"] == 25.0
+    assert result["progress"]["eta_seconds"] == 900
