@@ -19,6 +19,7 @@ dependencies = [
     "numpy>=1.26.0",
     "pillow>=12.2.0",
     "torchvision>=0.27.0",
+    "huggingface-hub>=1.19.0",
 ]
 
 [project.scripts]
@@ -35,9 +36,15 @@ sweep-layers = "scripts.sweep_layers:main"
 guarded-generate = "scripts.guarded_generate:main"
 
 [tool.setuptools.packages.find]
-include = ["activation_probe_mvp*", "scripts*"]
+include = ["activation_probe_mvp*", "api*", "scripts*"]
 
 [dependency-groups]
+api = [
+    "fastapi>=0.141.1",
+    "httpx2>=2.10.0",
+    "modal>=1.5.0",
+    "uvicorn[standard]>=0.52.1",
+]
 dev = [
     "modal>=1.5.0",
     "pre-commit>=4.6.0",

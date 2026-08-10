@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -12,6 +13,7 @@ import modal
 APP_DIR = "/app"
 HF_CACHE_DIR = "/cache/huggingface"
 OUTPUT_DIR = "/outputs"
+APP_NAME = "open-constitution"
 REPO_ROOT = Path(__file__).parent
 
 DEFAULT_MODEL_ID = "google/gemma-4-E2B-it"
@@ -137,7 +139,15 @@ def _print_spawned(name: str, function_call, *, output_path: str) -> None:
     print(f"Expected Modal Volume output path: {output_path}")
 
 
-app = modal.App("open-constitution")
+def _api_artifact_dir(artifact_id: str, artifact_type: str) -> Path:
+    if re.fullmatch(r"[0-9a-f]{32}", artifact_id) is None:
+        raise ValueError("artifact_id must be a 32-character lowercase hexadecimal UUID")
+    if artifact_type not in {"probe", "classifier"}:
+        raise ValueError("artifact_type must be 'probe' or 'classifier'")
+    return Path(OUTPUT_DIR) / "jobs" / artifact_id / artifact_type
+
+
+app = modal.App(APP_NAME)
 
 hf_cache = modal.Volume.from_name("open-constitution-hf-cache", create_if_missing=True)
 outputs = modal.Volume.from_name("open-constitution-outputs", create_if_missing=True)
@@ -153,6 +163,16 @@ image = (
     )
     .add_local_dir(str(REPO_ROOT / "scripts"), remote_path=f"{APP_DIR}/scripts", copy=True)
     .add_local_dir(str(REPO_ROOT / "data"), remote_path=f"{APP_DIR}/data", copy=True)
+)
+
+publish_image = (
+    modal.Image.debian_slim(python_version="3.11")
+    .pip_install("huggingface-hub>=1.19.0")
+    .add_local_dir(
+        str(REPO_ROOT / "activation_probe_mvp"),
+        remote_path=f"{APP_DIR}/activation_probe_mvp",
+        copy=True,
+    )
 )
 
 
@@ -346,8 +366,10 @@ def train_probe(
     out_dir: str = DEFAULT_OUT_DIR,
     epochs: int = 100,
     lr: float = 1e-3,
+    max_examples: int = 20000,
     no_chat_template: bool = False,
-) -> str:
+    artifact_id: str | None = None,
+) -> dict[str, object]:
     os.environ["HF_HOME"] = HF_CACHE_DIR
 
     remote_data_path = data_path if data_path.startswith("/") else f"{APP_DIR}/{data_path}"
@@ -369,6 +391,8 @@ def train_probe(
         str(epochs),
         "--lr",
         str(lr),
+        "--max_examples",
+        str(max_examples),
     ]
 
     if no_chat_template:
@@ -380,7 +404,16 @@ def train_probe(
         hf_cache.commit()
         outputs.commit()
 
-    return remote_out_dir
+    config_path = Path(remote_out_dir) / "config.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    return {
+        "artifact_id": artifact_id or Path(out_dir).name,
+        "artifact_type": "probe",
+        "artifact_dir": out_dir.strip("/"),
+        "volume_path": remote_out_dir,
+        "files": ["probe.pt", "config.json"],
+        "metrics": config.get("metrics"),
+    }
 
 
 @app.function(
@@ -406,7 +439,8 @@ def run_train_exchange_classifier(
     logging_steps: int = 500,
     save_steps: int = 5000,
     resume_from_checkpoint: str | None = None,
-) -> str:
+    artifact_id: str | None = None,
+) -> dict[str, object]:
     os.environ["HF_HOME"] = HF_CACHE_DIR
     os.environ["HF_DATASETS_DISABLE_PROGRESS_BARS"] = "1"
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -477,7 +511,58 @@ def run_train_exchange_classifier(
         hf_cache.commit()
         outputs.commit()
 
-    return remote_out_dir
+    classifier_config_path = remote_out_path / "classifier_config.json"
+    classifier_config = json.loads(classifier_config_path.read_text(encoding="utf-8"))
+    return {
+        "artifact_id": artifact_id or Path(out_dir).name,
+        "artifact_type": "classifier",
+        "artifact_dir": out_dir.strip("/"),
+        "volume_path": remote_out_dir,
+        "files": [
+            "config.json",
+            "classifier_config.json",
+            "model.safetensors",
+            "tokenizer.json",
+        ],
+        "metrics": classifier_config.get("metrics"),
+    }
+
+
+@app.function(
+    image=publish_image,
+    timeout=60 * 60,
+    volumes={
+        OUTPUT_DIR: outputs,
+    },
+)
+def publish_artifact_to_hf(
+    artifact_id: str,
+    artifact_type: str,
+    repo_id: str,
+    private: bool = True,
+    commit_message: str = "Upload trained Open Constitution artifact",
+) -> dict[str, str]:
+    """Publish an API-created artifact using HF_TOKEN injected as a Modal Secret."""
+    from activation_probe_mvp.publishing import publish_artifact
+
+    hf_token = os.environ.get("HF_TOKEN")
+    if not hf_token:
+        raise ValueError("HF_TOKEN must be supplied through a Modal Secret")
+
+    outputs.reload()
+    artifact_dir = _api_artifact_dir(artifact_id, artifact_type)
+    result = publish_artifact(
+        artifact_dir=artifact_dir,
+        artifact_id=artifact_id,
+        artifact_type=artifact_type,
+        repo_id=repo_id,
+        hf_token=hf_token,
+        private=private,
+        commit_message=commit_message,
+    )
+    if artifact_type == "probe":
+        outputs.commit()
+    return result
 
 
 @app.function(
@@ -827,6 +912,7 @@ def main(
     out_dir: str = DEFAULT_OUT_DIR,
     epochs: int = 100,
     lr: float = 1e-3,
+    max_examples: int = 20000,
     no_chat_template: bool = False,
 ):
     remote_out_dir = _volume_path(out_dir)
@@ -837,6 +923,7 @@ def main(
         out_dir=out_dir,
         epochs=epochs,
         lr=lr,
+        max_examples=max_examples,
         no_chat_template=no_chat_template,
     )
     _print_spawned("probe training", function_call, output_path=remote_out_dir)
