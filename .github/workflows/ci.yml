@@ -56,7 +56,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - run: uv sync --locked --dev
+      - run: uv sync --locked --dev --group api
       - run: uv run pytest
 
   build:
@@ -73,5 +73,5 @@ jobs:
           python-version: "3.11"
 
       - run: uv sync --locked --dev
-      - run: uv run python -m compileall activation_probe_mvp scripts tests
+      - run: uv run python -m compileall activation_probe_mvp api scripts tests
       - run: uv build

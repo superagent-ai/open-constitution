@@ -51,6 +51,9 @@ def main():
         max_examples=args.max_examples if args.max_examples > 0 else None,
         seed=args.sample_seed,
     )
+    invalid_labels = sorted({example.label for example in examples} - {0, 1})
+    if invalid_labels:
+        raise ValueError(f"Probe training requires binary labels 0 or 1; found {invalid_labels}")
     print(f"Loaded {len(all_examples)} examples; training on {len(examples)}")
 
     if len(examples) < 4:
@@ -109,6 +112,7 @@ def main():
         "probe_every_n_tokens": 4,
         "smoothing_window": 4,
         "use_chat_template": use_chat_template,
+        "metrics": metrics,
         "note": "MVP config. Calibrate thresholds on validation data before production use.",
     }
 

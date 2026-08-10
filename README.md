@@ -237,6 +237,70 @@ The first run downloads the model into the `open-constitution-hf-cache` Modal Vo
 runs reuse that cache. If your Modal workspace supports larger GPUs and you want extra
 headroom, change `gpu="A10G"` to a larger GPU type (for example `gpu="A100"`) in `modal_train.py`.
 
+## Railway training API
+
+The Railway service is a lightweight FastAPI control plane. It does not run models itself:
+it starts the deployed Modal GPU functions, returns a job ID immediately, and polls Modal for
+results. API jobs use the fixed binary datasets:
+
+- probe: `data/training_data.jsonl`
+- classifier: `data/training_data_classifier.jsonl`
+
+Deploy in this order:
+
+```bash
+git lfs pull
+uv run modal deploy modal_train.py
+```
+
+Then create a Railway service from this repository. `railway.toml` selects `Dockerfile.api`.
+Configure these Railway variables:
+
+```text
+API_KEY=<long random bearer token>
+MODAL_TOKEN_ID=<Modal service token ID>
+MODAL_TOKEN_SECRET=<Modal service token secret>
+MODAL_APP_NAME=open-constitution            # optional
+MODAL_ENVIRONMENT=<Modal environment name>  # optional
+```
+
+The API listens on Railway's injected `PORT` and exposes an unauthenticated `/health` endpoint.
+Every `/v1/*` request requires `Authorization: Bearer $API_KEY`.
+
+Start and poll a probe job:
+
+```bash
+curl -X POST "$API_URL/v1/probes/train" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"max_examples": 20000, "epochs": 100}'
+
+curl "$API_URL/v1/jobs/$JOB_ID" \
+  -H "Authorization: Bearer $API_KEY"
+```
+
+Start classifier training:
+
+```bash
+curl -X POST "$API_URL/v1/classifiers/train" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"epochs": 5, "batch_size": 8}'
+```
+
+Publish a completed artifact to Hugging Face:
+
+```bash
+curl -X POST "$API_URL/v1/artifacts/$ARTIFACT_TYPE/$ARTIFACT_ID/publish" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"repo_id\":\"your-name/your-model\",\"hf_token\":\"$HF_TOKEN\",\"private\":true}"
+```
+
+Use a fine-grained, repository-scoped Hugging Face write token. The API passes it to the
+publisher as a per-call Modal Secret; it is not included in Modal function arguments, API
+responses, or application logs.
+
 ## Data format
 
 `data/training_data.jsonl` is tracked with Git LFS and is the original training source for
