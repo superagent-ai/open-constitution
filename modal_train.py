@@ -168,6 +168,7 @@ image = (
 publish_image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install("huggingface-hub>=1.19.0")
+    .env({"PYTHONPATH": APP_DIR})
     .add_local_dir(
         str(REPO_ROOT / "activation_probe_mvp"),
         remote_path=f"{APP_DIR}/activation_probe_mvp",
