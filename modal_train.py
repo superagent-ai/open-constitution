@@ -414,6 +414,7 @@ def run_build_toxicchat_classifier_data(
     image=image,
     gpu="A10G",
     timeout=24 * 60 * 60,
+    scaledown_window=1,
     secrets=[modal.Secret.from_name("huggingface-secret")],
     volumes={
         "/cache": hf_cache,
@@ -492,6 +493,7 @@ def train_probe(
     image=image,
     gpu="A10G",
     timeout=24 * 60 * 60,
+    scaledown_window=1,
     secrets=[modal.Secret.from_name("huggingface-secret")],
     volumes={
         "/cache": hf_cache,

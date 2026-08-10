@@ -296,6 +296,17 @@ Running jobs include live progress when available:
 }
 ```
 
+Cancel a running job and remove all of its Modal artifacts:
+
+```bash
+curl -X POST "$API_URL/v1/jobs/$JOB_ID/cancel" \
+  -H "Authorization: Bearer $API_KEY"
+```
+
+Cancellation stops the Modal execution without retries; training containers are configured to
+scale down immediately afterward. It also recursively removes the job's
+`/outputs/jobs/{artifact_id}` directory and deletes its progress metadata.
+
 Start classifier training:
 
 ```bash
