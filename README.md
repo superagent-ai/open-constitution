@@ -279,6 +279,34 @@ curl "$API_URL/v1/jobs/$JOB_ID" \
   -H "Authorization: Bearer $API_KEY"
 ```
 
+Running jobs include live progress when available:
+
+```json
+{
+  "status": "running",
+  "progress": {
+    "phase": "training",
+    "step": 100000,
+    "total_steps": 300390,
+    "percent": 33.29,
+    "epoch": 1.66,
+    "loss": 0.1887,
+    "eta_seconds": 47400
+  }
+}
+```
+
+Cancel a running job and remove all of its Modal artifacts:
+
+```bash
+curl -X POST "$API_URL/v1/jobs/$JOB_ID/cancel" \
+  -H "Authorization: Bearer $API_KEY"
+```
+
+Cancellation stops the Modal execution without retries; training containers are configured to
+scale down immediately afterward. It also recursively removes the job's
+`/outputs/jobs/{artifact_id}` directory and deletes its progress metadata.
+
 Start classifier training:
 
 ```bash

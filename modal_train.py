@@ -147,10 +147,70 @@ def _api_artifact_dir(artifact_id: str, artifact_type: str) -> Path:
     return Path(OUTPUT_DIR) / "jobs" / artifact_id / artifact_type
 
 
+def _record_job_progress(artifact_id: str | None, payload: dict[str, object]) -> None:
+    if artifact_id is None:
+        return
+    try:
+        job_progress[f"progress:{artifact_id}"] = {
+            "artifact_id": artifact_id,
+            **payload,
+        }
+    except Exception as exc:
+        print(f"Could not update job progress: {type(exc).__name__}")
+
+
+def _read_progress_file(path: Path) -> dict[str, object] | None:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+
+
+def _run_progress_subprocess(
+    command: list[str],
+    *,
+    cwd: str,
+    artifact_id: str | None,
+    progress_path: Path,
+    stdout=None,
+) -> None:
+    process = subprocess.Popen(
+        command,
+        cwd=cwd,
+        stdout=stdout,
+        stderr=subprocess.STDOUT if stdout is not None else None,
+    )
+    last_progress = None
+    while True:
+        progress = _read_progress_file(progress_path)
+        if progress is not None and progress != last_progress:
+            _record_job_progress(artifact_id, progress)
+            last_progress = progress
+        try:
+            return_code = process.wait(timeout=15)
+            break
+        except subprocess.TimeoutExpired:
+            continue
+
+    final_progress = _read_progress_file(progress_path)
+    if final_progress is not None and final_progress != last_progress:
+        _record_job_progress(artifact_id, final_progress)
+    if return_code != 0:
+        _record_job_progress(
+            artifact_id,
+            {
+                **(final_progress or {}),
+                "phase": "failed",
+            },
+        )
+        raise subprocess.CalledProcessError(return_code, command)
+
+
 app = modal.App(APP_NAME)
 
 hf_cache = modal.Volume.from_name("open-constitution-hf-cache", create_if_missing=True)
 outputs = modal.Volume.from_name("open-constitution-outputs", create_if_missing=True)
+job_progress = modal.Dict.from_name("open-constitution-job-progress", create_if_missing=True)
 local_env_secret = modal.Secret.from_dict(_dotenv_values(REPO_ROOT / ".env.local"))
 
 image = (
@@ -354,6 +414,7 @@ def run_build_toxicchat_classifier_data(
     image=image,
     gpu="A10G",
     timeout=24 * 60 * 60,
+    scaledown_window=1,
     secrets=[modal.Secret.from_name("huggingface-secret")],
     volumes={
         "/cache": hf_cache,
@@ -375,6 +436,10 @@ def train_probe(
 
     remote_data_path = data_path if data_path.startswith("/") else f"{APP_DIR}/{data_path}"
     remote_out_dir = f"{OUTPUT_DIR}/{out_dir}"
+    remote_out_path = Path(remote_out_dir)
+    remote_out_path.mkdir(parents=True, exist_ok=True)
+    progress_path = remote_out_path / "progress.json"
+    _record_job_progress(artifact_id, {"phase": "queued", "percent": 0.0})
 
     command = [
         "python",
@@ -394,13 +459,20 @@ def train_probe(
         str(lr),
         "--max_examples",
         str(max_examples),
+        "--progress_path",
+        str(progress_path),
     ]
 
     if no_chat_template:
         command.append("--no_chat_template")
 
     try:
-        subprocess.run(command, cwd=APP_DIR, check=True)
+        _run_progress_subprocess(
+            command,
+            cwd=APP_DIR,
+            artifact_id=artifact_id,
+            progress_path=progress_path,
+        )
     finally:
         hf_cache.commit()
         outputs.commit()
@@ -421,6 +493,7 @@ def train_probe(
     image=image,
     gpu="A10G",
     timeout=24 * 60 * 60,
+    scaledown_window=1,
     secrets=[modal.Secret.from_name("huggingface-secret")],
     volumes={
         "/cache": hf_cache,
@@ -455,6 +528,8 @@ def run_train_exchange_classifier(
     print(f"Classifier training data path: {remote_data_path}")
     print(f"Classifier training output dir: {remote_out_dir}")
     log_path = remote_out_path / "train.log"
+    progress_path = remote_out_path / "progress.json"
+    _record_job_progress(artifact_id, {"phase": "queued", "percent": 0.0})
 
     command = [
         "python",
@@ -480,6 +555,8 @@ def run_train_exchange_classifier(
         "--save_steps",
         str(save_steps),
         "--disable_tqdm",
+        "--progress_path",
+        str(progress_path),
     ]
 
     if prefix_augment:
@@ -496,12 +573,12 @@ def run_train_exchange_classifier(
     try:
         print(f"Training classifier. Logs are being written to: {log_path}")
         with log_path.open("a", encoding="utf-8") as log_file:
-            subprocess.run(
+            _run_progress_subprocess(
                 command,
                 cwd=APP_DIR,
-                check=True,
+                artifact_id=artifact_id,
+                progress_path=progress_path,
                 stdout=log_file,
-                stderr=subprocess.STDOUT,
             )
         print(f"Classifier training completed. Logs: {log_path}")
     except subprocess.CalledProcessError:

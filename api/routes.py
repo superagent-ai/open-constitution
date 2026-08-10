@@ -67,6 +67,22 @@ async def get_job(
     return await modal_client.poll_job(job_id)
 
 
+@router.post("/jobs/{job_id}/cancel")
+async def cancel_job(
+    job_id: str = Path(min_length=3, max_length=128, pattern=r"^[A-Za-z0-9_-]+$"),
+):
+    try:
+        result = await modal_client.cancel_job(job_id)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Modal rejected the cancellation request",
+        ) from exc
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    return result
+
+
 @router.post(
     "/artifacts/{artifact_type}/{artifact_id}/publish",
     response_model=SpawnedJob,

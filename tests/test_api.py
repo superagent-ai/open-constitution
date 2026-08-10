@@ -90,3 +90,36 @@ def test_publish_request_never_returns_hf_token(monkeypatch):
         "status": "running",
     }
     assert "hf_user_secret" not in captured["request_repr"]
+
+
+def test_cancel_job_returns_cleanup_result(monkeypatch):
+    monkeypatch.setenv("API_KEY", "platform-secret")
+
+    async def fake_cancel(job_id):
+        return {
+            "job_id": job_id,
+            "artifact_id": "a" * 32,
+            "status": "cancelled",
+            "execution_cancelled": True,
+            "artifacts_removed": True,
+            "cleanup_errors": [],
+        }
+
+    monkeypatch.setattr(modal_client, "cancel_job", fake_cancel)
+    response = client.post("/v1/jobs/fc-test/cancel", headers=auth_headers())
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "cancelled"
+    assert response.json()["artifacts_removed"] is True
+
+
+def test_cancel_unknown_job_returns_not_found(monkeypatch):
+    monkeypatch.setenv("API_KEY", "platform-secret")
+
+    async def fake_cancel(_job_id):
+        return None
+
+    monkeypatch.setattr(modal_client, "cancel_job", fake_cancel)
+    response = client.post("/v1/jobs/fc-missing/cancel", headers=auth_headers())
+
+    assert response.status_code == 404

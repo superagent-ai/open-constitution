@@ -31,6 +31,11 @@ async def test_spawn_probe_uses_fixed_dataset_and_scoped_output(monkeypatch):
     function = FakeFunction()
     monkeypatch.setattr(modal_client, "_function", lambda _name: function)
 
+    async def ignore_registration(_job_id, _artifact_id):
+        return None
+
+    monkeypatch.setattr(modal_client, "_register_job", ignore_registration)
+
     job_id = await modal_client.spawn_probe(
         ProbeTrainRequest(max_examples=50),
         artifact_id="a" * 32,
@@ -46,6 +51,11 @@ async def test_spawn_probe_uses_fixed_dataset_and_scoped_output(monkeypatch):
 async def test_spawn_classifier_uses_fixed_dataset_and_scoped_output(monkeypatch):
     function = FakeFunction()
     monkeypatch.setattr(modal_client, "_function", lambda _name: function)
+
+    async def ignore_registration(_job_id, _artifact_id):
+        return None
+
+    monkeypatch.setattr(modal_client, "_register_job", ignore_registration)
 
     job_id = await modal_client.spawn_classifier(
         ClassifierTrainRequest(epochs=1),
@@ -95,11 +105,21 @@ class FakeGet:
         return self.result
 
 
+class FakeCancel:
+    def __init__(self):
+        self.called = False
+
+    async def aio(self):
+        self.called = True
+
+
 class FakeFunctionCall:
     get_impl = FakeGet()
+    cancel_impl = FakeCancel()
 
     def __init__(self):
         self.get = self.get_impl
+        self.cancel = self.cancel_impl
 
     @classmethod
     def from_id(cls, _job_id):
@@ -120,7 +140,132 @@ async def test_poll_job_maps_modal_state(monkeypatch, get_impl, expected_status)
     FakeFunctionCall.get_impl = get_impl
     monkeypatch.setattr(modal_client.modal, "FunctionCall", FakeFunctionCall)
 
+    async def no_progress(_job_id):
+        return None
+
+    monkeypatch.setattr(modal_client, "_job_progress", no_progress)
+
     result = await modal_client.poll_job("fc-test")
 
     assert result["status"] == expected_status
     assert "sensitive remote details" not in repr(result)
+
+
+@pytest.mark.anyio
+async def test_poll_running_job_includes_progress(monkeypatch):
+    FakeFunctionCall.get_impl = FakeGet(error=TimeoutError())
+    monkeypatch.setattr(modal_client.modal, "FunctionCall", FakeFunctionCall)
+
+    async def current_progress(_job_id):
+        return {
+            "phase": "training",
+            "step": 100,
+            "total_steps": 400,
+            "percent": 25.0,
+            "eta_seconds": 900,
+        }
+
+    monkeypatch.setattr(modal_client, "_job_progress", current_progress)
+
+    result = await modal_client.poll_job("fc-test")
+
+    assert result["status"] == "running"
+    assert result["progress"]["percent"] == 25.0
+    assert result["progress"]["eta_seconds"] == 900
+
+
+class FakeDictMethod:
+    def __init__(self, values, operation):
+        self.values = values
+        self.operation = operation
+
+    async def aio(self, key, default=None):
+        if self.operation == "get":
+            return self.values.get(key, default)
+        return self.values.pop(key, default)
+
+
+class FakeProgressStore:
+    def __init__(self, values):
+        self.values = values
+        self.get = FakeDictMethod(values, "get")
+        self.pop = FakeDictMethod(values, "pop")
+
+
+class FakeRemoveFile:
+    def __init__(self):
+        self.calls = []
+        self.error = None
+
+    async def aio(self, path, *, recursive):
+        self.calls.append((path, recursive))
+        if self.error is not None:
+            raise self.error
+
+
+class FakeVolume:
+    remove_file = FakeRemoveFile()
+
+    @classmethod
+    def from_name(cls, _name, *, environment_name=None):
+        return cls()
+
+
+@pytest.mark.anyio
+async def test_cancel_job_terminates_container_and_removes_artifacts(monkeypatch):
+    artifact_id = "d" * 32
+    store = FakeProgressStore(
+        {
+            "job:fc-test": artifact_id,
+            f"progress:{artifact_id}": {"percent": 25.0},
+        }
+    )
+    FakeFunctionCall.cancel_impl = FakeCancel()
+    FakeVolume.remove_file = FakeRemoveFile()
+    monkeypatch.setattr(modal_client, "_progress_store", lambda: store)
+    monkeypatch.setattr(modal_client.modal, "FunctionCall", FakeFunctionCall)
+    monkeypatch.setattr(modal_client.modal, "Volume", FakeVolume)
+
+    result = await modal_client.cancel_job("fc-test")
+
+    assert FakeFunctionCall.cancel_impl.called is True
+    assert FakeVolume.remove_file.calls == [(f"jobs/{artifact_id}", True)]
+    assert store.values == {}
+    assert result == {
+        "job_id": "fc-test",
+        "artifact_id": artifact_id,
+        "status": "cancelled",
+        "execution_cancelled": True,
+        "artifacts_removed": True,
+        "cleanup_errors": [],
+    }
+
+
+@pytest.mark.anyio
+async def test_cancel_job_returns_none_without_registered_artifact(monkeypatch):
+    monkeypatch.setattr(modal_client, "_progress_store", lambda: FakeProgressStore({}))
+
+    assert await modal_client.cancel_job("fc-missing") is None
+
+
+@pytest.mark.anyio
+async def test_cancel_job_treats_missing_artifact_directory_as_clean(monkeypatch):
+    artifact_id = "e" * 32
+    store = FakeProgressStore(
+        {
+            "job:fc-test": artifact_id,
+            f"progress:{artifact_id}": {"percent": 0.0},
+        }
+    )
+    FakeFunctionCall.cancel_impl = FakeCancel()
+    FakeVolume.remove_file = FakeRemoveFile()
+    FakeVolume.remove_file.error = modal_client.InvalidError("No such file or directory.")
+    monkeypatch.setattr(modal_client, "_progress_store", lambda: store)
+    monkeypatch.setattr(modal_client.modal, "FunctionCall", FakeFunctionCall)
+    monkeypatch.setattr(modal_client.modal, "Volume", FakeVolume)
+
+    result = await modal_client.cancel_job("fc-test")
+
+    assert result["artifacts_removed"] is True
+    assert result["cleanup_errors"] == []
+    assert store.values == {}

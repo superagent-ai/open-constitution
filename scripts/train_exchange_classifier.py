@@ -34,6 +34,7 @@ def main():
     parser.add_argument("--disable_tqdm", action="store_true", default=True)
     parser.add_argument("--show_tqdm", action="store_false", dest="disable_tqdm")
     parser.add_argument("--resume_from_checkpoint", default=None)
+    parser.add_argument("--progress_path", default=None)
     args = parser.parse_args()
 
     metrics = train_exchange_classifier(
@@ -55,6 +56,7 @@ def main():
         save_steps=args.save_steps,
         disable_tqdm=args.disable_tqdm,
         resume_from_checkpoint=args.resume_from_checkpoint,
+        progress_path=args.progress_path,
     )
 
     print(json.dumps(metrics, indent=2))
