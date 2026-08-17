@@ -5,19 +5,30 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, SecretStr, field_validator
 
+from activation_probe_mvp.probe_models import (
+    DEFAULT_PROBE_MODEL_ID,
+    ProbeFamily,
+    validate_probe_model_id,
+)
+
 ArtifactType = Literal["probe", "classifier"]
 
-PROBE_MODEL_ID = "google/gemma-4-E2B-it"
+PROBE_MODEL_ID = DEFAULT_PROBE_MODEL_ID
 CLASSIFIER_MODEL_ID = "answerdotai/ModernBERT-base"
 
 
 class ProbeTrainRequest(BaseModel):
-    model_id: Literal["google/gemma-4-E2B-it"] = PROBE_MODEL_ID
+    model_id: str = PROBE_MODEL_ID
     layer: int = Field(default=-4, ge=-128, le=127)
     epochs: int = Field(default=100, ge=1, le=500)
     learning_rate: float = Field(default=1e-3, gt=0, le=1)
     max_examples: int = Field(default=20000, ge=4, le=20000)
     no_chat_template: bool = False
+
+    @field_validator("model_id")
+    @classmethod
+    def validate_model_id(cls, value: str) -> str:
+        return validate_probe_model_id(value)
 
 
 class ClassifierTrainRequest(BaseModel):
@@ -63,3 +74,7 @@ class SpawnedJob(BaseModel):
     status: Literal["running"] = "running"
     artifact_id: str | None = None
     artifact_type: ArtifactType | None = None
+    model_id: str | None = None
+    model_family: ProbeFamily | None = None
+    gpu: str | None = None
+    memory_mib: int | None = None

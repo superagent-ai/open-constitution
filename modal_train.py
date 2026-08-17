@@ -151,7 +151,10 @@ def _record_job_progress(artifact_id: str | None, payload: dict[str, object]) ->
     if artifact_id is None:
         return
     try:
-        job_progress[f"progress:{artifact_id}"] = {
+        progress_key = f"progress:{artifact_id}"
+        current_progress = job_progress.get(progress_key, {})
+        job_progress[progress_key] = {
+            **current_progress,
             "artifact_id": artifact_id,
             **payload,
         }
@@ -216,6 +219,7 @@ local_env_secret = modal.Secret.from_dict(_dotenv_values(REPO_ROOT / ".env.local
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(*_project_dependencies())
+    .env({"PYTHONPATH": APP_DIR})
     .add_local_dir(
         str(REPO_ROOT / "activation_probe_mvp"),
         remote_path=f"{APP_DIR}/activation_probe_mvp",
@@ -432,14 +436,27 @@ def train_probe(
     no_chat_template: bool = False,
     artifact_id: str | None = None,
 ) -> dict[str, object]:
+    from activation_probe_mvp.probe_models import resolve_probe_model_route
+
     os.environ["HF_HOME"] = HF_CACHE_DIR
+    route = resolve_probe_model_route(model_id)
 
     remote_data_path = data_path if data_path.startswith("/") else f"{APP_DIR}/{data_path}"
     remote_out_dir = f"{OUTPUT_DIR}/{out_dir}"
     remote_out_path = Path(remote_out_dir)
     remote_out_path.mkdir(parents=True, exist_ok=True)
     progress_path = remote_out_path / "progress.json"
-    _record_job_progress(artifact_id, {"phase": "queued", "percent": 0.0})
+    _record_job_progress(
+        artifact_id,
+        {
+            "phase": "queued",
+            "percent": 0.0,
+            "model_id": route.model_id,
+            "model_family": route.family,
+            "recommended_gpu": route.gpu,
+            "estimated_parameters_b": route.estimated_parameters_b,
+        },
+    )
 
     command = [
         "python",
@@ -993,8 +1010,14 @@ def main(
     max_examples: int = 20000,
     no_chat_template: bool = False,
 ):
+    from activation_probe_mvp.probe_models import resolve_probe_model_route
+
     remote_out_dir = _volume_path(out_dir)
-    function_call = train_probe.spawn(
+    route = resolve_probe_model_route(model_id)
+    function_call = train_probe.with_options(
+        gpu=route.gpu,
+        memory=route.memory_mib,
+    ).spawn(
         model_id=model_id,
         data_path=data_path,
         layer=layer,

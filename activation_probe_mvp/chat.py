@@ -17,6 +17,13 @@ def _get_chat_template_owner(tokenizer_or_processor):
     return None
 
 
+def _chat_template_options(owner) -> dict[str, bool]:
+    name_or_path = str(getattr(owner, "name_or_path", "")).lower()
+    if "qwen3" in name_or_path:
+        return {"enable_thinking": False}
+    return {}
+
+
 def format_exchange(
     tokenizer_or_processor,
     prompt: str,
@@ -33,6 +40,7 @@ def format_exchange(
         owner = _get_chat_template_owner(tokenizer_or_processor)
 
         if owner is not None:
+            template_options = _chat_template_options(owner)
             messages = [
                 {"role": "user", "content": prompt},
                 {"role": "assistant", "content": response},
@@ -43,6 +51,7 @@ def format_exchange(
                     messages,
                     tokenize=False,
                     add_generation_prompt=False,
+                    **template_options,
                 )
             except TypeError:
                 # Some processors/templates have slightly different signatures.
@@ -65,6 +74,7 @@ def format_generation_prompt(
         owner = _get_chat_template_owner(tokenizer_or_processor)
 
         if owner is not None:
+            template_options = _chat_template_options(owner)
             messages = [
                 {"role": "user", "content": prompt},
             ]
@@ -74,6 +84,7 @@ def format_generation_prompt(
                     messages,
                     tokenize=False,
                     add_generation_prompt=True,
+                    **template_options,
                 )
             except TypeError:
                 return owner.apply_chat_template(messages, tokenize=False)

@@ -1,4 +1,7 @@
 **
 !Dockerfile.api
+!activation_probe_mvp/
+!activation_probe_mvp/__init__.py
+!activation_probe_mvp/probe_models.py
 !api/
 !api/**

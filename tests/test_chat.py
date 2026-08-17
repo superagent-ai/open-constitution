@@ -30,6 +30,17 @@ class ProcessorWrapper:
         self.tokenizer = tokenizer
 
 
+class QwenTemplateOwner:
+    name_or_path = "Qwen/Qwen3-8B"
+
+    def __init__(self):
+        self.options = None
+
+    def apply_chat_template(self, messages, **kwargs):
+        self.options = kwargs
+        return "qwen-template"
+
+
 def test_format_exchange_falls_back_without_chat_template():
     assert (
         format_exchange(object(), prompt="Explain", response="Answer")
@@ -74,3 +85,11 @@ def test_format_exchange_supports_legacy_template_signature():
         format_exchange(LegacyTemplateOwner(), prompt="Explain", response="Answer")
         == "legacy:user,assistant:False"
     )
+
+
+def test_qwen3_chat_template_disables_thinking_mode():
+    owner = QwenTemplateOwner()
+
+    assert format_generation_prompt(owner, prompt="Explain") == "qwen-template"
+    assert owner.options["enable_thinking"] is False
+    assert owner.options["add_generation_prompt"] is True

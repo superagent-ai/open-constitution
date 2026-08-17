@@ -31,20 +31,22 @@ async def test_spawn_probe_uses_fixed_dataset_and_scoped_output(monkeypatch):
     function = FakeFunction()
     monkeypatch.setattr(modal_client, "_function", lambda _name: function)
 
-    async def ignore_registration(_job_id, _artifact_id):
+    async def ignore_registration(_job_id, _artifact_id, **_kwargs):
         return None
 
     monkeypatch.setattr(modal_client, "_register_job", ignore_registration)
 
     job_id = await modal_client.spawn_probe(
-        ProbeTrainRequest(max_examples=50),
+        ProbeTrainRequest(model_id="Qwen/Qwen3-8B", max_examples=50),
         artifact_id="a" * 32,
     )
 
     assert job_id == "fc-test"
     assert function.spawn_kwargs["data_path"] == "data/training_data.jsonl"
+    assert function.spawn_kwargs["model_id"] == "Qwen/Qwen3-8B"
     assert function.spawn_kwargs["out_dir"] == f"jobs/{'a' * 32}/probe"
     assert function.spawn_kwargs["artifact_id"] == "a" * 32
+    assert function.options == {"gpu": "L40S", "memory": 32768}
 
 
 @pytest.mark.anyio
@@ -52,7 +54,7 @@ async def test_spawn_classifier_uses_fixed_dataset_and_scoped_output(monkeypatch
     function = FakeFunction()
     monkeypatch.setattr(modal_client, "_function", lambda _name: function)
 
-    async def ignore_registration(_job_id, _artifact_id):
+    async def ignore_registration(_job_id, _artifact_id, **_kwargs):
         return None
 
     monkeypatch.setattr(modal_client, "_register_job", ignore_registration)

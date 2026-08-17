@@ -307,6 +307,27 @@ Cancellation stops the Modal execution without retries; training containers are 
 scale down immediately afterward. It also recursively removes the job's
 `/outputs/jobs/{artifact_id}` directory and deletes its progress metadata.
 
+Probe jobs accept official text-generation checkpoints from these Hugging Face namespaces:
+
+- Gemma: `google/gemma-*`
+- Qwen: `Qwen/Qwen*`
+- Kimi: `moonshotai/Kimi*`
+- GLM: `zai-org/*GLM*` and legacy `THUDM/*glm*`
+
+The API rejects vision, audio, embedding, quantized, and third-party repositories. It estimates
+model size from the checkpoint name and dynamically routes jobs from A10G/L40S through
+multi-GPU H200 or B200 workers. Large Kimi and GLM checkpoints can require eight GPUs and incur
+substantial cost. Every checkpoint requires a separately trained probe.
+
+For example:
+
+```bash
+curl -X POST "$API_URL/v1/probes/train" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model_id":"Qwen/Qwen3-8B","max_examples":20000,"epochs":100}'
+```
+
 Start classifier training:
 
 ```bash

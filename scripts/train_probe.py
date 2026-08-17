@@ -16,6 +16,7 @@ from activation_probe_mvp.activations import (
 )
 from activation_probe_mvp.chat import format_exchange
 from activation_probe_mvp.data import balanced_sample, load_jsonl
+from activation_probe_mvp.probe_models import resolve_probe_model_route
 from activation_probe_mvp.training import evaluate_probe, save_probe, train_linear_probe
 
 
@@ -42,7 +43,7 @@ def main():
     parser.add_argument(
         "--model_id",
         default="google/gemma-4-E2B-it",
-        help="Default is Gemma 4 E2B instruction-tuned. Also works with Qwen/Llama-style causal LMs.",
+        help="Official Gemma, Qwen, Kimi, or GLM text-generation checkpoint.",
     )
     parser.add_argument("--data_path", default="data/training_data.jsonl")
     parser.add_argument("--layer", type=int, default=-4)
@@ -63,6 +64,7 @@ def main():
         help="Disable tokenizer/processor chat templates and use simple User/Assistant formatting.",
     )
     args = parser.parse_args()
+    route = resolve_probe_model_route(args.model_id)
 
     write_progress(args.progress_path, {"phase": "loading_model", "percent": 0.0})
     print(f"Loading model: {args.model_id}")
@@ -168,6 +170,9 @@ def main():
 
     config = {
         "model_id": args.model_id,
+        "model_family": route.family,
+        "recommended_gpu": route.gpu,
+        "estimated_parameters_b": route.estimated_parameters_b,
         "layer": args.layer,
         "hidden_size": int(X.shape[-1]),
         "threshold": 0.65,

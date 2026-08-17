@@ -11,6 +11,8 @@ RUN pip install --no-cache-dir --requirement /tmp/api-requirements.txt \
     && useradd --create-home --uid 10001 api
 
 COPY --chown=api:api api /app/api
+COPY --chown=api:api activation_probe_mvp/__init__.py /app/activation_probe_mvp/__init__.py
+COPY --chown=api:api activation_probe_mvp/probe_models.py /app/activation_probe_mvp/probe_models.py
 
 USER api
 

@@ -15,6 +15,7 @@ from activation_probe_mvp.activations import (
 from activation_probe_mvp.chat import format_generation_prompt
 from activation_probe_mvp.exchange_classifier import DEFAULT_REFUSAL, ExchangeClassifier
 from activation_probe_mvp.modeling import LinearProbe, RiskSmoother
+from activation_probe_mvp.probe_models import validate_probe_model_id
 
 
 def decode_token(tokenizer_or_processor, token: torch.Tensor) -> str:
@@ -218,6 +219,12 @@ def main():
 
     config = json.loads(Path(args.config_path).read_text(encoding="utf-8"))
     model_id = args.model_id or config["model_id"]
+    validate_probe_model_id(model_id)
+    if model_id != config["model_id"]:
+        raise ValueError(
+            f"Probe was trained for {config['model_id']}, not {model_id}. "
+            "Train a separate probe for each target model."
+        )
 
     use_chat_template = bool(config.get("use_chat_template", True))
     if args.no_chat_template:
