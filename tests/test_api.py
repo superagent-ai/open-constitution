@@ -52,6 +52,38 @@ def test_probe_training_spawns_fixed_job(monkeypatch):
     assert captured["request"].max_examples == 100
 
 
+def test_probe_training_accepts_official_qwen_and_returns_gpu_route(monkeypatch):
+    monkeypatch.setenv("API_KEY", "platform-secret")
+
+    async def fake_spawn(_request, *, artifact_id):
+        return "fc-qwen"
+
+    monkeypatch.setattr(modal_client, "spawn_probe", fake_spawn)
+    response = client.post(
+        "/v1/probes/train",
+        headers=auth_headers(),
+        json={"model_id": "Qwen/Qwen3-8B", "max_examples": 100},
+    )
+
+    assert response.status_code == 202
+    assert response.json()["model_id"] == "Qwen/Qwen3-8B"
+    assert response.json()["model_family"] == "qwen"
+    assert response.json()["gpu"] == "L40S"
+    assert response.json()["memory_mib"] == 32768
+
+
+def test_probe_training_rejects_unofficial_or_non_text_model(monkeypatch):
+    monkeypatch.setenv("API_KEY", "platform-secret")
+
+    response = client.post(
+        "/v1/probes/train",
+        headers=auth_headers(),
+        json={"model_id": "attacker/Qwen3-8B"},
+    )
+
+    assert response.status_code == 422
+
+
 def test_classifier_training_rejects_unapproved_model(monkeypatch):
     monkeypatch.setenv("API_KEY", "platform-secret")
     response = client.post(

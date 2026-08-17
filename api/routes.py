@@ -4,6 +4,8 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 
+from activation_probe_mvp.probe_models import resolve_probe_model_route
+
 from . import modal_client
 from .auth import require_api_key
 from .schemas import (
@@ -31,6 +33,7 @@ def _spawn_error() -> HTTPException:
 )
 async def train_probe(request: ProbeTrainRequest) -> SpawnedJob:
     artifact_id = uuid4().hex
+    route = resolve_probe_model_route(request.model_id)
     try:
         job_id = await modal_client.spawn_probe(request, artifact_id=artifact_id)
     except Exception as exc:
@@ -39,6 +42,10 @@ async def train_probe(request: ProbeTrainRequest) -> SpawnedJob:
         job_id=job_id,
         artifact_id=artifact_id,
         artifact_type="probe",
+        model_id=route.model_id,
+        model_family=route.family,
+        gpu=route.gpu,
+        memory_mib=route.memory_mib,
     )
 
 

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+
+from .probe_models import resolve_probe_model_route
 
 
 def get_device() -> str:
@@ -10,10 +12,6 @@ def get_device() -> str:
     if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         return "mps"
     return "cpu"
-
-
-def _is_gemma4(model_id: str) -> bool:
-    return "gemma-4" in model_id.lower()
 
 
 def _set_pad_token(tokenizer_or_processor) -> None:
@@ -30,47 +28,67 @@ def load_model_and_tokenizer(model_id: str, device: str | None = None):
     Standard text-only models use:
       AutoTokenizer + AutoModelForCausalLM
 
-    Gemma 4 uses:
-      AutoProcessor + AutoModelForImageTextToText
+    Gemma conditional-generation checkpoints use:
+      AutoProcessor + AutoModelForImageTextToText.
 
     The returned second object may therefore be a tokenizer or a processor.
     The rest of the repo treats it as tokenizer_or_processor.
     """
+    route = resolve_probe_model_route(model_id)
     device = device or get_device()
-    dtype = torch.float16 if device == "cuda" else torch.float32
+    dtype = "auto" if device.startswith("cuda") else torch.float32
+    config = AutoConfig.from_pretrained(
+        model_id,
+        trust_remote_code=route.trust_remote_code,
+    )
+    architectures = [name.lower() for name in getattr(config, "architectures", []) or []]
+    use_processor = route.family == "gemma" and any(
+        "conditionalgeneration" in name or "imagetexttotext" in name for name in architectures
+    )
+    use_device_map = device.startswith("cuda") and torch.cuda.device_count() > 1
+    model_kwargs = {
+        "dtype": dtype,
+        "trust_remote_code": route.trust_remote_code,
+        "device_map": "auto" if use_device_map else None,
+        "low_cpu_mem_usage": True,
+    }
 
-    if _is_gemma4(model_id):
+    if use_processor:
         from transformers import AutoModelForImageTextToText, AutoProcessor
 
-        processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
+        processor = AutoProcessor.from_pretrained(
+            model_id,
+            trust_remote_code=route.trust_remote_code,
+        )
         _set_pad_token(processor)
 
         model = AutoModelForImageTextToText.from_pretrained(
             model_id,
-            dtype=dtype,
-            trust_remote_code=True,
-            device_map=None,
+            **model_kwargs,
         )
 
-        model.to(device)
+        if not use_device_map:
+            model.to(device)
         model.eval()
+        input_device = str(model.get_input_embeddings().weight.device) if use_device_map else device
+        return model, processor, input_device
 
-        return model, processor, device
-
-    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_id,
+        trust_remote_code=route.trust_remote_code,
+    )
     _set_pad_token(tokenizer)
 
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
-        dtype=dtype,
-        trust_remote_code=True,
-        device_map=None,
+        **model_kwargs,
     )
 
-    model.to(device)
+    if not use_device_map:
+        model.to(device)
     model.eval()
-
-    return model, tokenizer, device
+    input_device = str(model.get_input_embeddings().weight.device) if use_device_map else device
+    return model, tokenizer, input_device
 
 
 def tokenize_text(tokenizer_or_processor, text: str, device: str, max_length: int | None = None):

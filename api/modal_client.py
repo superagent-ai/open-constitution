@@ -7,6 +7,8 @@ from typing import Any
 import modal
 from modal.exception import InvalidError, OutputExpiredError
 
+from activation_probe_mvp.probe_models import resolve_probe_model_route
+
 from .schemas import ClassifierTrainRequest, ProbeTrainRequest, PublishRequest
 
 DEFAULT_MODAL_APP_NAME = "open-constitution"
@@ -32,7 +34,12 @@ def _progress_store() -> modal.Dict:
     )
 
 
-async def _register_job(job_id: str, artifact_id: str) -> None:
+async def _register_job(
+    job_id: str,
+    artifact_id: str,
+    *,
+    metadata: dict[str, Any] | None = None,
+) -> None:
     try:
         store = _progress_store()
         await store.put.aio(f"job:{job_id}", artifact_id)
@@ -42,6 +49,7 @@ async def _register_job(job_id: str, artifact_id: str) -> None:
                 "artifact_id": artifact_id,
                 "phase": "queued",
                 "percent": 0.0,
+                **(metadata or {}),
             },
             skip_if_exists=True,
         )
@@ -106,7 +114,12 @@ async def spawn_probe(
     *,
     artifact_id: str,
 ) -> str:
-    call = await _function("train_probe").spawn.aio(
+    route = resolve_probe_model_route(request.model_id)
+    worker = _function("train_probe").with_options(
+        gpu=route.gpu,
+        memory=route.memory_mib,
+    )
+    call = await worker.spawn.aio(
         model_id=request.model_id,
         data_path=PROBE_DATA_PATH,
         layer=request.layer,
@@ -117,7 +130,17 @@ async def spawn_probe(
         no_chat_template=request.no_chat_template,
         artifact_id=artifact_id,
     )
-    await _register_job(call.object_id, artifact_id)
+    await _register_job(
+        call.object_id,
+        artifact_id,
+        metadata={
+            "model_id": route.model_id,
+            "model_family": route.family,
+            "gpu": route.gpu,
+            "memory_mib": route.memory_mib,
+            "estimated_parameters_b": route.estimated_parameters_b,
+        },
+    )
     return call.object_id
 
 
